@@ -828,6 +828,7 @@ body {
           <option value="openai-gpt4o-mini">⚡ GPT-4o mini — Rápido y económico</option>
           <option value="openai-gpt4o">🧠 GPT-4o — Máxima calidad</option>
           <option value="anthropic-claude-haiku">🔵 Claude Haiku 3.5 — Ultra rápido</option>
+          <option value="anthropic-claude-sonnet">🟣 Claude Sonnet 4.6 — Alta calidad</option>
           <option value="google-gemini-flash">🟡 Gemini 2.0 Flash — Más económico</option>
           <option value="groq-llama">🟢 Groq LLaMA 3.3 — Velocidad extrema</option>
         </select>
@@ -863,6 +864,12 @@ body {
     <div style="height:16px"></div>
     <div style="font-size:11px;color:var(--texto-placeholder);text-align:center;">
       🔒 Tu API Key se guarda cifrada en el navegador.<br>Para máxima seguridad corporativa, usa Azure Key Vault.
+    </div>
+    <div style="margin-top:12px;padding:10px 12px;background:color-mix(in srgb,var(--color-advertencia) 10%,transparent);border:1px solid color-mix(in srgb,var(--color-advertencia) 30%,transparent);border-radius:8px;font-size:11px;color:var(--texto-secundario);text-align:left;line-height:1.6">
+      <strong style="color:var(--color-advertencia)">⚡ Compatibilidad CORS:</strong><br>
+      • <strong>OpenAI</strong> y <strong>Groq</strong> funcionan desde cualquier origen (GitHub Pages, local, etc.)<br>
+      • <strong>Anthropic (Claude)</strong> requiere el header especial incluido en este agente<br>
+      • <strong>Google Gemini</strong> funciona con su clave de AI Studio (no Vertex AI)
     </div>
   </div>
 </div>
@@ -1023,6 +1030,7 @@ body {
           <option value="openai-gpt4o-mini">⚡ GPT-4o mini</option>
           <option value="openai-gpt4o">🧠 GPT-4o</option>
           <option value="anthropic-claude-haiku">🔵 Claude Haiku 3.5</option>
+          <option value="anthropic-claude-sonnet">🟣 Claude Sonnet 4.6</option>
           <option value="google-gemini-flash">🟡 Gemini 2.0 Flash</option>
           <option value="groq-llama">🟢 Groq LLaMA 3.3</option>
         </select>
@@ -1270,7 +1278,12 @@ const LLM_CONFIG = {
   'anthropic-claude-haiku': {
     endpoint: 'https://api.anthropic.com/v1/messages',
     model: 'claude-haiku-4-5-20251001',
-    authHeader: (k) => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }),
+    // CRÍTICO: Este header es requerido por Anthropic para llamadas directas desde el navegador
+    authHeader: (k) => ({
+      'x-api-key': k,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    }),
     buildBody: (msgs) => {
       const system = msgs.find(m => m.role === 'system')?.content || '';
       const chatMsgs = msgs.filter(m => m.role !== 'system');
@@ -1292,6 +1305,36 @@ const LLM_CONFIG = {
     },
     testMsg: [{ role: 'user', content: 'Hi' }],
     label: 'Claude Haiku 3.5',
+  },
+  'anthropic-claude-sonnet': {
+    endpoint: 'https://api.anthropic.com/v1/messages',
+    model: 'claude-sonnet-4-6',
+    authHeader: (k) => ({
+      'x-api-key': k,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    }),
+    buildBody: (msgs) => {
+      const system = msgs.find(m => m.role === 'system')?.content || '';
+      const chatMsgs = msgs.filter(m => m.role !== 'system');
+      return {
+        model: 'claude-sonnet-4-6',
+        max_tokens: CONFIG.MAX_TOKENS,
+        system: system || undefined,
+        messages: chatMsgs,
+        stream: CONFIG.STREAMING_ENABLED,
+      };
+    },
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ')) return null;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if (d.type === 'content_block_delta') return d.delta?.text || null;
+        return null;
+      } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'Claude Sonnet 4.6',
   },
   'google-gemini-flash': {
     endpoint: (k) => `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${k}&alt=sse`,
@@ -1576,7 +1619,17 @@ async function validateApiKey() {
       setAvatarState('idle');
     }
   } catch(e) {
-    showStatus('apikey-status', `✗ Error: ${e.message}`, 'error');
+    // Mostrar error con saltos de línea si contiene \n
+    const errParts = e.message.split('\n');
+    showStatus('apikey-status', errParts[0], 'error');
+    // Si hay detalle adicional, mostrarlo como segundo párrafo
+    if (errParts.length > 1) {
+      const statusEl = document.getElementById('apikey-status');
+      const detail = document.createElement('div');
+      detail.style.cssText = 'margin-top:6px;font-size:11px;opacity:0.85;line-height:1.5';
+      detail.textContent = errParts.slice(1).join(' ').trim();
+      statusEl.appendChild(detail);
+    }
     setAvatarState('idle');
   }
   btn.disabled = false;
@@ -1586,17 +1639,63 @@ async function validateApiKey() {
 async function testApiKey(key, model) {
   const cfg = LLM_CONFIG[model];
   if (!cfg) throw new Error('Modelo no reconocido');
+
+  // Detectar el proveedor para mensajes de error específicos
+  const isAnthropic = model.startsWith('anthropic');
+  const isGoogle    = model.startsWith('google');
+  const isGroq      = model.startsWith('groq');
+
   const headers = { 'Content-Type': 'application/json', ...cfg.authHeader(key) };
-  const body = cfg.buildBody([{ role: 'user', content: 'test' }], key);
+  const body = cfg.buildBody([{ role: 'user', content: 'Hi' }], key);
   body.stream = false;
   body.max_tokens = 5;
   const endpoint = cfg.dynamicEndpoint ? cfg.endpoint(key) : cfg.endpoint;
-  const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
-  if (resp.status === 401 || resp.status === 403) return false;
+
+  let resp;
+  try {
+    resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  } catch (networkErr) {
+    // "Failed to fetch" = CORS bloqueado o sin conexión
+    const errMsg = networkErr.message || '';
+    if (errMsg.toLowerCase().includes('failed to fetch') || errMsg.toLowerCase().includes('networkerror')) {
+      if (isAnthropic) {
+        throw new Error(
+          '❌ CORS bloqueado por Anthropic.\n\n' +
+          'La API de Anthropic requiere el header "anthropic-dangerous-direct-browser-access: true" para llamadas desde el navegador. ' +
+          'Ya está incluido en esta versión corregida. Si sigues viendo este error, ' +
+          'asegúrate de estar usando el archivo actualizado.\n\n' +
+          'Alternativa: usa GPT-4o mini (OpenAI) o Groq, que no tienen esta restricción.'
+        );
+      }
+      if (isGoogle) {
+        throw new Error('❌ Error de red con Google Gemini. Verifica tu conexión a internet y que la API Key de Google AI Studio sea válida.');
+      }
+      throw new Error(
+        '❌ Error de red: "Failed to fetch".\n\n' +
+        'Causas posibles:\n' +
+        '• Sin conexión a internet\n' +
+        '• El servidor de la API está bloqueado por CORS\n' +
+        '• Firewall corporativo bloqueando la solicitud\n\n' +
+        'Prueba con Groq (api.groq.com) que tiene mejor soporte CORS en navegadores.'
+      );
+    }
+    throw new Error('Error de red: ' + errMsg);
+  }
+
+  if (resp.status === 401 || resp.status === 403) {
+    if (isAnthropic) throw new Error('❌ API Key de Anthropic inválida. Verifica en console.anthropic.com');
+    if (isGoogle)    throw new Error('❌ API Key de Google inválida. Verifica en aistudio.google.com');
+    if (isGroq)      throw new Error('❌ API Key de Groq inválida. Verifica en console.groq.com');
+    throw new Error('❌ API Key inválida o sin permisos.');
+  }
+  if (resp.status === 429) {
+    // Rate limit = key válida
+    return true;
+  }
   if (resp.status === 400) {
-    const txt = await resp.text();
-    if (txt.includes('auth') || txt.includes('key') || txt.includes('invalid')) return false;
-    return true; // 400 but for other reasons = key ok
+    const txt = await resp.text().catch(() => '');
+    if (txt.includes('auth') || txt.includes('key') || txt.includes('invalid') || txt.includes('credential')) return false;
+    return true; // 400 por otro motivo = key válida
   }
   return resp.ok || resp.status < 500;
 }
@@ -2212,15 +2311,36 @@ async function callLLM(messages) {
   const body = cfg.buildBody(messages, key);
   const endpoint = cfg.dynamicEndpoint ? cfg.endpoint(key) : cfg.endpoint;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    const msg = networkErr.message || '';
+    if (msg.toLowerCase().includes('failed to fetch')) {
+      const isAnthropic = STATE.llmModel.startsWith('anthropic');
+      if (isAnthropic) {
+        throw new Error(
+          'Error de red con Anthropic (CORS). ' +
+          'Asegúrate de usar la versión actualizada del agente que incluye el header ' +
+          '"anthropic-dangerous-direct-browser-access: true". ' +
+          'Como alternativa, cambia el modelo a GPT-4o mini o Groq desde ⚙️ Configuración.'
+        );
+      }
+      throw new Error('Error de red ("Failed to fetch"). Verifica tu conexión a internet.');
+    }
+    throw new Error('Error de red: ' + msg);
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error ${response.status}: ${errorText.slice(0, 200)}`);
+    const errorText = await response.text().catch(() => '');
+    if (response.status === 401) throw new Error('API Key inválida o expirada. Ve a ⚙️ Configuración para actualizarla.');
+    if (response.status === 429) throw new Error('Límite de velocidad alcanzado. Espera unos segundos e intenta de nuevo.');
+    if (response.status === 500) throw new Error('Error interno del servidor de la API. Intenta de nuevo en un momento.');
+    throw new Error(`API Error ${response.status}: ${errorText.slice(0, 300)}`);
   }
 
   return response;
