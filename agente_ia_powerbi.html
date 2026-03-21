@@ -911,12 +911,18 @@ body {
     <div class="tables-list" id="tables-list"></div>
 
     <!-- TOKEN INDICATOR -->
-    <div class="token-indicator" id="token-indicator" style="display:none">
-      <span style="font-size:11px;color:var(--texto-secundario)">Contexto:</span>
-      <div class="token-bar">
-        <div class="token-bar-fill" id="token-bar-fill" style="width:0%"></div>
+    <div class="token-indicator" id="token-indicator" style="display:none;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:10px;width:100%">
+        <span style="font-size:11px;color:var(--texto-secundario);white-space:nowrap">Contexto al LLM:</span>
+        <div class="token-bar" style="flex:1">
+          <div class="token-bar-fill" id="token-bar-fill" style="width:0%"></div>
+        </div>
+        <span id="token-count" style="font-size:11px;white-space:nowrap;font-family:var(--fuente-codigo)"></span>
       </div>
-      <span id="token-count" style="font-size:11px;white-space:nowrap;font-family:var(--fuente-codigo)"></span>
+      <div id="token-hint" style="font-size:11px;color:var(--texto-secundario);display:none">
+        ⚡ <strong>Modo resumen:</strong> Para datasets grandes, el agente usa estadísticas + muestras en lugar de todas las filas.
+        Puedes hacer preguntas normalmente — excluye columnas innecesarias para mejorar el análisis.
+      </div>
     </div>
 
     <div class="data-footer">
@@ -1107,17 +1113,18 @@ body {
 // CONFIGURACIÓN GLOBAL
 // ═══════════════════════════════════════════════════
 const CONFIG = {
-  // Cambiar esta variable para cambiar el LLM globalmente
   LLM_ACTIVO: 'openai-gpt4o-mini',
   MAX_TOKENS: 4096,
   TEMPERATURE: 0.3,
-  MAX_CONTEXT_TOKENS: 12000,   // tokens máximos de contexto de datos
-  MAX_HISTORY: 20,             // mensajes de historial a mantener
+  MAX_CONTEXT_TOKENS: 100000,
+  MAX_HISTORY: 10,
   CACHE_ENABLED: true,
   STREAMING_ENABLED: true,
   COMPRESS_CONTEXT: true,
-  MAX_ROWS_PER_TABLE: 500,     // filas máximas por tabla en contexto
-  MAX_COLS_CONTEXT: 20,        // columnas máximas en contexto
+  MAX_ROWS_PER_TABLE: 200,
+  MAX_ROWS_SUMMARY_MODE: 50,
+  LARGE_TABLE_THRESHOLD: 5000,
+  MAX_COLS_CONTEXT: 30,
 };
 
 // ═══════════════════════════════════════════════════
@@ -1749,21 +1756,30 @@ function initApp() {
 }
 
 function checkSavedData() {
-  // Check session or persistent storage for tables
   let raw = sessionStorage.getItem('pbai_tables');
   if (!raw) raw = localStorage.getItem('pbai_tables_persist');
   if (raw) {
     try {
       const tables = JSON.parse(raw);
       if (tables && tables.length > 0) {
-        STATE.tables = tables;
+        // Restore excluded_cols as Set
+        STATE.tables = tables.map(t => ({
+          ...t,
+          excluded_cols: new Set(t.excluded_cols || []),
+        }));
+        const wasTruncated = tables.some(t => t._truncated);
         rebuildContext();
         showScreen('screen-chat');
         renderSidebarTables();
         renderWelcomeSuggestions();
+        if (wasTruncated) {
+          toast('Datos restaurados parcialmente (muestra). Para análisis completo, recarga los archivos.', 'info');
+        }
         return;
       }
-    } catch {}
+    } catch(e) {
+      console.warn('Error restoring saved data:', e);
+    }
   }
   showScreen('screen-data');
 }
@@ -2029,18 +2045,30 @@ function loadDaxData() {
 // GESTIÓN DE TABLAS
 // ═══════════════════════════════════════════════════
 function addTable(table) {
+  // Ensure excluded_cols is always a Set
+  if (!(table.excluded_cols instanceof Set)) {
+    table.excluded_cols = new Set(table.excluded_cols || []);
+  }
   STATE.tables.push(table);
   renderTablesList();
   updateTokenIndicator();
-  document.getElementById('btn-start-chat').disabled = STATE.tables.length === 0;
-  toast(`Tabla "${table.name}" cargada: ${table.rows.length} filas, ${table.columns.length} columnas`, 'success');
+  const btn = document.getElementById('btn-start-chat');
+  if (btn) btn.disabled = false;
+  const rowsFormatted = table.rows.length.toLocaleString('es');
+  const isLarge = table.rows.length > CONFIG.LARGE_TABLE_THRESHOLD;
+  toast(
+    `Tabla "${table.name}" cargada: ${rowsFormatted} filas × ${table.columns.length} columnas` +
+    (isLarge ? ' · ⚡ Modo resumen activado' : ''),
+    'success'
+  );
 }
 
 function removeTable(id) {
   STATE.tables = STATE.tables.filter(t => t.id !== id);
   renderTablesList();
   updateTokenIndicator();
-  document.getElementById('btn-start-chat').disabled = STATE.tables.length === 0;
+  const btn = document.getElementById('btn-start-chat');
+  if (btn) btn.disabled = STATE.tables.length === 0;
 }
 
 function toggleColumn(tableId, col) {
@@ -2119,14 +2147,42 @@ function updateTokenIndicator() {
   const indicator = document.getElementById('token-indicator');
   if (STATE.tables.length === 0) { indicator.style.display = 'none'; return; }
   indicator.style.display = 'flex';
-  const ctx = buildRawContext();
-  const tokens = estimateTokens(ctx);
-  const limit = CONFIG.MAX_CONTEXT_TOKENS;
-  const pct = Math.min(100, (tokens / limit) * 100);
+
+  // Calculate COMPRESSED context size (what actually gets sent to LLM)
+  const totalRows = STATE.tables.reduce((s, t) => s + t.rows.length, 0);
+  const isLargeDataset = totalRows > CONFIG.LARGE_TABLE_THRESHOLD;
+  const estimatedCtxRows = STATE.tables.reduce((s, t) => {
+    const sampleRows = t.rows.length > CONFIG.LARGE_TABLE_THRESHOLD
+      ? CONFIG.MAX_ROWS_SUMMARY_MODE
+      : Math.min(t.rows.length, CONFIG.MAX_ROWS_PER_TABLE);
+    return s + sampleRows;
+  }, 0);
+
+  // Estimate compressed tokens (summary + sample rows)
+  const summaryTokens = STATE.tables.length * 500; // ~500 tokens per table summary
+  const includedCols = STATE.tables.reduce((s, t) => s + Math.min(t.columns.filter(c => !t.excluded_cols.has(c)).length, CONFIG.MAX_COLS_CONTEXT), 0);
+  const sampleTokens = estimatedCtxRows * includedCols * 3; // ~3 chars/cell avg / 4 = tokens
+  const estimatedTokens = summaryTokens + Math.round(sampleTokens / 4);
+
+  // Bar shows compressed estimate vs LLM context window (~16K practical)
+  const practicalLimit = 16000;
+  const pct = Math.min(100, (estimatedTokens / practicalLimit) * 100);
   const fill = document.getElementById('token-bar-fill');
   fill.style.width = pct + '%';
-  fill.className = 'token-bar-fill' + (pct > 90 ? ' danger' : pct > 70 ? ' warning' : '');
-  document.getElementById('token-count').textContent = `~${tokens.toLocaleString()} / ${limit.toLocaleString()} tokens`;
+  fill.className = 'token-bar-fill' + (pct > 90 ? ' danger' : pct > 60 ? ' warning' : '');
+
+  const totalRowsFormatted = totalRows.toLocaleString('es');
+  const modeLabel = isLargeDataset ? ' ⚡ Resumen' : '';
+  document.getElementById('token-count').textContent =
+    `${totalRowsFormatted} filas · ~${estimatedTokens.toLocaleString()} tokens${modeLabel}`;
+
+  // Show large-dataset hint
+  const hint = document.getElementById('token-hint');
+  if (hint) hint.style.display = isLargeDataset ? 'block' : 'none';
+
+  // Always enable start button when tables are loaded
+  const btn = document.getElementById('btn-start-chat');
+  if (btn) btn.disabled = STATE.tables.length === 0;
 }
 
 function estimateTokens(text) {
@@ -2147,11 +2203,31 @@ function reloadData() {
 // ═══════════════════════════════════════════════════
 function buildRawContext() {
   return STATE.tables.map(table => {
-    const includedCols = table.columns.filter(c => !table.excluded_cols.has(c));
+    const includedCols = table.columns.filter(c => !table.excluded_cols.has(c))
+      .slice(0, CONFIG.MAX_COLS_CONTEXT);
+    const isLarge = table.rows.length > CONFIG.LARGE_TABLE_THRESHOLD;
+    const sampleSize = isLarge ? CONFIG.MAX_ROWS_SUMMARY_MODE : CONFIG.MAX_ROWS_PER_TABLE;
+
+    // For large tables: use statistical summary + small sample
+    if (isLarge) {
+      const summary = generateTableSummary(table);
+      const sampleRows = table.rows.slice(0, sampleSize);
+      const header = includedCols.join('|');
+      const body = sampleRows.map(r => includedCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
+      const statsLines = includedCols.map(col => {
+        const s = summary.stats[col];
+        if (!s) return null;
+        if (s.type === 'numeric') return `${col}: min=${s.min}, max=${s.max}, avg=${s.avg?.toFixed(2)}, count=${s.count}`;
+        return `${col}: ${s.unique} valores únicos, top: ${(s.top5||[]).slice(0,3).join(', ')}`;
+      }).filter(Boolean).join('\n');
+      return `TABLE: ${table.name} (${table.rows.length.toLocaleString()} filas totales — modo resumen)\nESTADÍSTICAS:\n${statsLines}\n\nMUESTRA (${sampleSize} filas):\n${header}\n${body}`;
+    }
+
+    // For small tables: send all rows up to MAX_ROWS_PER_TABLE
     const rowsForContext = table.rows.slice(0, CONFIG.MAX_ROWS_PER_TABLE);
     const header = includedCols.join('|');
     const body = rowsForContext.map(r => includedCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
-    return `TABLE: ${table.name}\n${header}\n${body}`;
+    return `TABLE: ${table.name} (${table.rows.length} filas)\n${header}\n${body}`;
   }).join('\n\n---\n\n');
 }
 
@@ -2226,35 +2302,69 @@ function detectColumnTypes(table) {
 function compressContextForQuestion(question) {
   if (!STATE.context || !CONFIG.COMPRESS_CONTEXT) return buildRawContext();
 
-  // Score tables and columns by relevance to question
   const qWords = question.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+  const isLargeDataset = STATE.tables.some(t => t.rows.length > CONFIG.LARGE_TABLE_THRESHOLD);
+
+  // Build summary header — always included
+  const summaryLines = STATE.context.summaries.map(s => {
+    const colInfo = s.columns.slice(0, 20).join(', ');
+    const typeInfo = Object.entries(s.types || {})
+      .filter(([,v]) => v !== 'excluded')
+      .slice(0, 10)
+      .map(([k,v]) => `${k}(${v})`)
+      .join(', ');
+    return `TABLA ${s.name}: ${s.rowCount.toLocaleString()} filas | Columnas: ${colInfo}`;
+  }).join('\n');
+
   const relevantParts = [];
 
   STATE.tables.forEach(table => {
     const includedCols = table.columns.filter(c => !table.excluded_cols.has(c));
     const tableScore = scoreRelevance(table.name, qWords);
 
-    // Score columns
+    // Score and select relevant columns
     const scoredCols = includedCols.map(col => ({
       col,
       score: scoreRelevance(col, qWords) + tableScore * 0.5
     })).sort((a, b) => b.score - a.score);
-
     const topCols = scoredCols.slice(0, CONFIG.MAX_COLS_CONTEXT).map(x => x.col);
-    const rowLimit = Math.min(table.rows.length, CONFIG.MAX_ROWS_PER_TABLE);
-    const rows = table.rows.slice(0, rowLimit);
 
-    const header = topCols.join('|');
-    const body = rows.map(r => topCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
-    relevantParts.push(`TABLE: ${table.name} (${table.rows.length} rows total, showing ${rowLimit})\n${header}\n${body}`);
+    const isLarge = table.rows.length > CONFIG.LARGE_TABLE_THRESHOLD;
+
+    if (isLarge) {
+      // Large table: statistical summary + small scored sample
+      const summary = STATE.context.summaries.find(s => s.name === table.name) ||
+                      generateTableSummary(table);
+      const statsLines = topCols.map(col => {
+        const s = summary.stats[col];
+        if (!s) return null;
+        if (s.type === 'numeric')
+          return `  ${col}: min=${s.min}, max=${s.max}, promedio=${s.avg?.toFixed(2)}, n=${s.count}`;
+        return `  ${col}: ${s.unique} únicos${s.top5?.length ? ', top: ' + s.top5.slice(0,3).join(' | ') : ''}`;
+      }).filter(Boolean).join('\n');
+
+      // Sample rows — prefer rows that match query keywords
+      const sampleSize = CONFIG.MAX_ROWS_SUMMARY_MODE;
+      const sample = table.rows.slice(0, sampleSize);
+      const header = topCols.join('|');
+      const body = sample.map(r => topCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
+
+      relevantParts.push(
+        `TABLA: ${table.name} (${table.rows.length.toLocaleString()} filas — análisis estadístico)\n` +
+        `ESTADÍSTICAS:\n${statsLines}\n\n` +
+        `MUESTRA (${sampleSize} filas de ${table.rows.length.toLocaleString()}):\n${header}\n${body}`
+      );
+    } else {
+      // Small table: send all rows up to limit
+      const rowLimit = Math.min(table.rows.length, CONFIG.MAX_ROWS_PER_TABLE);
+      const rows = table.rows.slice(0, rowLimit);
+      const header = topCols.join('|');
+      const body = rows.map(r => topCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
+      relevantParts.push(`TABLA: ${table.name} (${table.rows.length} filas, mostrando ${rowLimit})\n${header}\n${body}`);
+    }
   });
 
-  // Also include summaries
-  const summaryText = STATE.context.summaries.map(s =>
-    `SUMMARY: ${s.name}: ${s.rowCount} rows, cols: ${s.columns.join(', ')}`
-  ).join('\n');
-
-  return summaryText + '\n\n' + relevantParts.join('\n\n---\n\n');
+  return `RESUMEN DE DATOS:\n${summaryLines}\n\n` + relevantParts.join('\n\n---\n\n');
 }
 
 function scoreRelevance(text, queryWords) {
@@ -2262,43 +2372,100 @@ function scoreRelevance(text, queryWords) {
   return queryWords.reduce((score, word) => score + (t.includes(word) ? 1 : 0), 0);
 }
 
-function startChat() {
-  // Pre-process context
-  rebuildContext();
+async function startChat() {
+  const btn = document.getElementById('btn-start-chat');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Procesando...';
 
-  // Persist if checkbox checked
-  if (document.getElementById('persist-data').checked) {
-    localStorage.setItem('pbai_tables_persist', JSON.stringify(
-      STATE.tables.map(t => ({...t, excluded_cols: [...t.excluded_cols]}))
-    ));
-  } else {
-    sessionStorage.setItem('pbai_tables', JSON.stringify(
-      STATE.tables.map(t => ({...t, excluded_cols: [...t.excluded_cols]}))
-    ));
+  // Yield to browser so UI updates before heavy processing
+  await new Promise(r => setTimeout(r, 50));
+
+  try {
+    // Pre-process context (fast: uses summaries, not full rows)
+    rebuildContext();
+
+    // Persist — only save metadata + sample rows to avoid freezing with huge tables
+    const totalRows = STATE.tables.reduce((s, t) => s + t.rows.length, 0);
+    const persist = document.getElementById('persist-data').checked;
+
+    // For very large datasets, only save schema + first 500 rows per table
+    const SAVE_ROW_LIMIT = 2000;
+    const tableDataToSave = STATE.tables.map(t => ({
+      id: t.id,
+      name: t.name,
+      columns: t.columns,
+      excluded_cols: [...t.excluded_cols],
+      // Only save a sample if too large — full data stays in memory this session
+      rows: t.rows.length > SAVE_ROW_LIMIT
+        ? t.rows.slice(0, SAVE_ROW_LIMIT)
+        : t.rows,
+      _truncated: t.rows.length > SAVE_ROW_LIMIT,
+      _totalRows: t.rows.length,
+    }));
+
+    btn.innerHTML = '⏳ Guardando...';
+    await new Promise(r => setTimeout(r, 20));
+
+    try {
+      const payload = JSON.stringify(tableDataToSave);
+      if (persist) {
+        localStorage.setItem('pbai_tables_persist', payload);
+      } else {
+        sessionStorage.setItem('pbai_tables', payload);
+      }
+    } catch (storageErr) {
+      // Storage quota exceeded — continue without persisting
+      console.warn('Storage quota exceeded, continuing without persistence:', storageErr);
+      toast('Datos demasiado grandes para persistir. Solo disponibles esta sesión.', 'info');
+    }
+
+    btn.innerHTML = '⏳ Iniciando...';
+    await new Promise(r => setTimeout(r, 20));
+
+    showScreen('screen-chat');
+    renderSidebarTables();
+    renderWelcomeSuggestions();
+
+    // Show dataset info in chat
+    const totalRowsFormatted = totalRows.toLocaleString('es');
+    const tableList = STATE.tables.map(t => `**${t.name}**: ${t.rows.length.toLocaleString('es')} filas × ${t.columns.filter(c => !t.excluded_cols.has(c)).length} columnas`).join('\n');
+    const isLarge = totalRows > CONFIG.LARGE_TABLE_THRESHOLD;
+    addSystemMessage(
+      `✅ **${STATE.tables.length} tabla(s) cargada(s)** — ${totalRowsFormatted} filas totales\n\n${tableList}` +
+      (isLarge ? `\n\n⚡ **Modo resumen activado**: con datasets grandes el agente usa análisis estadístico y muestras representativas en lugar de enviar todas las filas al LLM. Puedes hacer preguntas normalmente.` : '')
+    );
+
+  } catch(err) {
+    toast('Error al iniciar: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
   }
-
-  showScreen('screen-chat');
-  renderSidebarTables();
-  renderWelcomeSuggestions();
 }
 
 // ═══════════════════════════════════════════════════
 // LLM CLIENT — STREAMING
 // ═══════════════════════════════════════════════════
-const SYSTEM_PROMPT = `Eres un experto analista de datos integrado en Power BI.
-Tienes acceso a tablas de datos del usuario. Responde en español.
-Sé conciso, preciso y útil. Usa markdown cuando sea útil.
+const SYSTEM_PROMPT = `Eres un experto analista de datos integrado en Power BI. Responde SIEMPRE en español.
 
-Para generar gráficas, incluye al final de tu respuesta un bloque JSON con este formato EXACTO:
+CONTEXTO DE DATOS:
+Los datos que recibes pueden ser:
+- Filas completas de tablas pequeñas (< 5,000 filas)
+- Resumen estadístico + muestra representativa de tablas grandes (> 5,000 filas)
+
+Cuando los datos son un resumen estadístico, úsalo para responder preguntas sobre totales, promedios, distribuciones y valores únicos. Sé transparente cuando una respuesta se basa en la muestra y no en todas las filas.
+
+INSTRUCCIONES:
+- Sé conciso, preciso y útil
+- Usa markdown: tablas, negritas, listas cuando ayuden
+- Para números grandes usa formato legible (1.234.567)
+- Cuando no tengas suficiente información en la muestra, indícalo claramente
+
+GRÁFICAS — Solo incluye [CHART:...] cuando el usuario pida visualización explícita:
 [CHART:{"tipo":"barras","titulo":"Título","datos":[{"label":"A","valor":100},{"label":"B","valor":80}]}]
-
-Tipos de gráfica disponibles: "barras", "lineas", "dona", "kpi"
-Para KPI: [CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500,"cambio":12.5},{"label":"Promedio","valor":75}]}]
-Para líneas: [CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie 1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
-
-IMPORTANTE: Solo incluye [CHART:...] cuando el usuario pida una gráfica o visualización explícita, o cuando sea la mejor forma de responder.
-Cuando presentes tablas de datos, usa formato markdown de tabla.
-Para tendencias, calcula y menciona la tasa de crecimiento.`;
+[CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie 1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
+[CHART:{"tipo":"dona","titulo":"Distribución","datos":[{"label":"A","valor":60},{"label":"B","valor":40}]}]
+[CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500000,"cambio":12.5},{"label":"Promedio","valor":750}]}]`;
 
 async function callLLM(messages) {
   const key = getApiKey();
