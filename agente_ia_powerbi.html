@@ -1,0 +1,3320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agente IA — Power BI</title>
+<style>
+/* ═══════════════════════════════════════════════════
+   CSS VARIABLES — TEMA ACTIVO
+   Estas variables son inyectadas dinámicamente
+   por la función applyTheme()
+═══════════════════════════════════════════════════ */
+:root {
+  --primario: #0F62FE;
+  --secundario: #393939;
+  --acento: #0043CE;
+  --fondo-app: #161616;
+  --fondo-chat: #1C1C1C;
+  --fondo-input: #262626;
+  --fondo-header: #0F0F0F;
+  --fondo-sidebar: #141414;
+  --burbuja-usuario: #0F62FE;
+  --burbuja-agente: #262626;
+  --texto-burbuja-usr: #FFFFFF;
+  --texto-burbuja-agt: #E0E0E0;
+  --texto-principal: #F4F4F4;
+  --texto-secundario: #8D8D8D;
+  --texto-placeholder: #525252;
+  --borde: #393939;
+  --borde-input: #525252;
+  --borde-focus: #0F62FE;
+  --color-exito: #24A148;
+  --color-error: #DA1E28;
+  --color-advertencia: #F1C21B;
+  --color-carga: #0F62FE;
+  --radio-borde: 12px;
+  --radio-boton: 8px;
+  --radio-input: 8px;
+  --fuente-principal: 'Segoe UI', system-ui, sans-serif;
+  --fuente-codigo: 'Cascadia Code', 'Consolas', monospace;
+  --fuente-tamano-base: 14px;
+}
+
+/* ═══════════════════════════════════════════════════
+   RESET Y BASE
+═══════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--fuente-principal);
+  font-size: var(--fuente-tamano-base);
+  background: var(--fondo-app);
+  color: var(--texto-principal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════════════
+   LAYOUT PRINCIPAL
+═══════════════════════════════════════════════════ */
+.screen { display: none; height: 100vh; width: 100vw; }
+.screen.active { display: flex; }
+
+/* ═══════════════════════════════════════════════════
+   SCREEN 1 — BIENVENIDA / API KEY
+═══════════════════════════════════════════════════ */
+#screen-apikey {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--fondo-app);
+  background-image: radial-gradient(ellipse at 20% 20%, color-mix(in srgb, var(--primario) 8%, transparent) 0%, transparent 60%),
+                    radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--acento) 5%, transparent) 0%, transparent 50%);
+}
+.welcome-card {
+  background: var(--fondo-chat);
+  border: 1px solid var(--borde);
+  border-radius: 20px;
+  padding: 40px;
+  width: 440px;
+  max-width: 95vw;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  animation: cardEntrance 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes cardEntrance {
+  from { opacity: 0; transform: translateY(30px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.welcome-avatar-wrap { margin-bottom: 20px; display: flex; justify-content: center; }
+.welcome-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--texto-principal);
+  margin-bottom: 6px;
+}
+.welcome-subtitle {
+  font-size: 13px;
+  color: var(--texto-secundario);
+  margin-bottom: 28px;
+}
+.form-group { text-align: left; margin-bottom: 16px; }
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  display: block;
+}
+.form-input {
+  width: 100%;
+  background: var(--fondo-input);
+  border: 1px solid var(--borde-input);
+  border-radius: var(--radio-input);
+  color: var(--texto-principal);
+  font-family: var(--fuente-codigo);
+  font-size: 13px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--borde-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primario) 20%, transparent); }
+.form-select {
+  width: 100%;
+  background: var(--fondo-input);
+  border: 1px solid var(--borde-input);
+  border-radius: var(--radio-input);
+  color: var(--texto-principal);
+  font-family: var(--fuente-principal);
+  font-size: 13px;
+  padding: 10px 14px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.form-select:focus { border-color: var(--borde-focus); }
+.btn-primary {
+  width: 100%;
+  background: var(--primario);
+  color: #fff;
+  border: none;
+  border-radius: var(--radio-boton);
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-primary:hover { background: var(--acento); transform: translateY(-1px); box-shadow: 0 4px 16px color-mix(in srgb, var(--primario) 40%, transparent); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-secondary {
+  background: transparent;
+  color: var(--texto-secundario);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-boton);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--borde-focus); color: var(--texto-principal); }
+.btn-danger {
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radio-boton);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-danger:hover { background: color-mix(in srgb, var(--color-error) 15%, transparent); }
+.status-msg {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  display: none;
+}
+.status-msg.error { background: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error); border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent); display: block; }
+.status-msg.success { background: color-mix(in srgb, var(--color-exito) 15%, transparent); color: var(--color-exito); border: 1px solid color-mix(in srgb, var(--color-exito) 30%, transparent); display: block; }
+.status-msg.info { background: color-mix(in srgb, var(--primario) 15%, transparent); color: var(--primario); border: 1px solid color-mix(in srgb, var(--primario) 30%, transparent); display: block; }
+.key-display {
+  font-family: var(--fuente-codigo);
+  font-size: 12px;
+  color: var(--texto-secundario);
+  background: var(--fondo-input);
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--borde);
+  text-align: left;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.input-row { display: flex; gap: 8px; }
+.input-row .form-input { flex: 1; }
+
+/* ═══════════════════════════════════════════════════
+   SCREEN 2 — CARGA DE DATOS
+═══════════════════════════════════════════════════ */
+#screen-data {
+  flex-direction: column;
+  background: var(--fondo-app);
+  overflow-y: auto;
+}
+.data-header {
+  background: var(--fondo-header);
+  border-bottom: 1px solid var(--borde);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.data-header-title { font-size: 16px; font-weight: 700; }
+.data-header-sub { font-size: 12px; color: var(--texto-secundario); margin-top: 2px; }
+.data-body { padding: 24px; flex: 1; max-width: 900px; margin: 0 auto; width: 100%; }
+.dropzone {
+  border: 2px dashed var(--borde-input);
+  border-radius: 16px;
+  padding: 48px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: color-mix(in srgb, var(--fondo-chat) 50%, transparent);
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--primario);
+  background: color-mix(in srgb, var(--primario) 8%, transparent);
+}
+.dropzone-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.6; }
+.dropzone-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.dropzone-sub { font-size: 13px; color: var(--texto-secundario); }
+.dropzone-formats { font-size: 11px; color: var(--texto-placeholder); margin-top: 8px; }
+.tables-list { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
+.table-card {
+  background: var(--fondo-chat);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-borde);
+  overflow: hidden;
+  animation: cardEntrance 0.3s ease both;
+}
+.table-card-header {
+  background: var(--fondo-sidebar);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--borde);
+}
+.table-card-name-input {
+  background: transparent;
+  border: none;
+  color: var(--texto-principal);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  font-family: var(--fuente-principal);
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.2s;
+}
+.table-card-name-input:focus { border-bottom-color: var(--primario); }
+.table-meta { font-size: 11px; color: var(--texto-secundario); display: flex; gap: 12px; }
+.table-meta span { display: flex; align-items: center; gap: 4px; }
+.table-actions { display: flex; gap: 6px; }
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--texto-secundario);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.btn-icon:hover { background: var(--borde); color: var(--texto-principal); }
+.btn-icon.danger:hover { color: var(--color-error); }
+.table-preview {
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.preview-table th {
+  background: var(--fondo-sidebar);
+  color: var(--texto-secundario);
+  font-weight: 600;
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--borde);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.preview-table th.included { color: var(--primario); }
+.preview-table th.excluded { opacity: 0.4; text-decoration: line-through; }
+.preview-table td {
+  padding: 5px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--borde) 50%, transparent);
+  color: var(--texto-burbuja-agt);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-table tr:nth-child(even) td { background: color-mix(in srgb, var(--fondo-sidebar) 30%, transparent); }
+.token-indicator {
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: var(--fondo-sidebar);
+  border-radius: 8px;
+  border: 1px solid var(--borde);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.token-bar { flex: 1; height: 6px; background: var(--borde); border-radius: 3px; overflow: hidden; }
+.token-bar-fill { height: 100%; background: var(--primario); border-radius: 3px; transition: width 0.4s ease; }
+.token-bar-fill.warning { background: var(--color-advertencia); }
+.token-bar-fill.danger { background: var(--color-error); }
+.data-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 0; gap: 12px; flex-wrap: wrap;
+}
+.data-options { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.toggle-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--texto-secundario); cursor: pointer;
+}
+.toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.toggle input { display: none; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--borde); border-radius: 10px; transition: 0.3s;
+}
+.toggle-slider:before {
+  content: ''; position: absolute;
+  width: 14px; height: 14px; left: 3px; bottom: 3px;
+  background: #fff; border-radius: 50%; transition: 0.3s;
+}
+.toggle input:checked + .toggle-slider { background: var(--primario); }
+.toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
+
+/* ═══════════════════════════════════════════════════
+   SCREEN 3 — CHAT PRINCIPAL
+═══════════════════════════════════════════════════ */
+#screen-chat {
+  flex-direction: row;
+  height: 100vh;
+}
+.chat-sidebar {
+  width: 260px;
+  background: var(--fondo-sidebar);
+  border-right: 1px solid var(--borde);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+.chat-sidebar.collapsed { width: 0; overflow: hidden; border: none; }
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--borde);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-brand { flex: 1; }
+.sidebar-brand-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-brand-sub { font-size: 11px; color: var(--texto-secundario); white-space: nowrap; }
+.sidebar-nav { padding: 12px 8px; flex: 1; overflow-y: auto; }
+.sidebar-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--texto-placeholder);
+  padding: 8px 8px 4px;
+}
+.sidebar-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--texto-secundario);
+  transition: all 0.15s;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-item:hover { background: var(--borde); color: var(--texto-principal); }
+.sidebar-item.active { background: color-mix(in srgb, var(--primario) 15%, transparent); color: var(--primario); }
+.sidebar-item-icon { font-size: 14px; flex-shrink: 0; }
+.sidebar-item-text { overflow: hidden; text-overflow: ellipsis; }
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid var(--borde);
+}
+
+/* MAIN CHAT AREA */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--fondo-chat);
+}
+.chat-header {
+  background: var(--fondo-header);
+  border-bottom: 1px solid var(--borde);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.chat-header-info { flex: 1; }
+.chat-header-name { font-size: 15px; font-weight: 700; }
+.chat-header-status { font-size: 11px; color: var(--color-exito); display: flex; align-items: center; gap: 4px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-exito); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.chat-header-actions { display: flex; gap: 6px; }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-track { background: transparent; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--borde); border-radius: 2px; }
+
+/* MENSAJES */
+.msg-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  animation: msgIn 0.25s ease both;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg-wrap.user { flex-direction: row-reverse; }
+.msg-avatar { width: 32px; height: 32px; flex-shrink: 0; }
+.msg-content { max-width: 75%; display: flex; flex-direction: column; gap: 4px; }
+.msg-wrap.user .msg-content { align-items: flex-end; }
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: var(--radio-borde);
+  line-height: 1.6;
+  font-size: 13.5px;
+  word-break: break-word;
+  position: relative;
+}
+.msg-wrap.user .msg-bubble {
+  background: var(--burbuja-usuario);
+  color: var(--texto-burbuja-usr);
+  border-bottom-right-radius: 4px;
+}
+.msg-wrap.agent .msg-bubble {
+  background: var(--burbuja-agente);
+  color: var(--texto-burbuja-agt);
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--borde);
+}
+.msg-time { font-size: 10px; color: var(--texto-placeholder); }
+.msg-wrap.agent .msg-actions {
+  display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity 0.2s;
+}
+.msg-wrap.agent:hover .msg-actions { opacity: 1; }
+
+/* TYPING INDICATOR */
+.typing-indicator {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--burbuja-agente);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-borde);
+  border-bottom-left-radius: 4px;
+  width: fit-content;
+}
+.typing-dots { display: flex; gap: 4px; }
+.typing-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--texto-secundario);
+  animation: typingBounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+  0%,60%,100% { transform: translateY(0); }
+  30% { transform: translateY(-6px); }
+}
+
+/* CHAT INPUT */
+.chat-input-area {
+  padding: 16px 20px;
+  border-top: 1px solid var(--borde);
+  background: var(--fondo-header);
+  flex-shrink: 0;
+}
+.chat-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  background: var(--fondo-input);
+  border: 1px solid var(--borde-input);
+  border-radius: 14px;
+  padding: 8px 8px 8px 16px;
+  transition: border-color 0.2s;
+}
+.chat-input-wrap:focus-within { border-color: var(--borde-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primario) 15%, transparent); }
+.chat-textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--texto-principal);
+  font-family: var(--fuente-principal);
+  font-size: 13.5px;
+  outline: none;
+  resize: none;
+  max-height: 120px;
+  line-height: 1.5;
+}
+.chat-textarea::placeholder { color: var(--texto-placeholder); }
+.btn-send {
+  background: var(--primario);
+  border: none;
+  border-radius: 8px;
+  width: 36px; height: 36px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  color: white;
+  font-size: 16px;
+}
+.btn-send:hover { background: var(--acento); transform: scale(1.05); }
+.btn-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.chat-input-hints {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+}
+.hint-chip {
+  font-size: 11px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--primario) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primario) 25%, transparent);
+  color: var(--primario);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.hint-chip:hover { background: color-mix(in srgb, var(--primario) 25%, transparent); }
+
+/* ═══════════════════════════════════════════════════
+   MARKDOWN EN MENSAJES
+═══════════════════════════════════════════════════ */
+.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { margin: 12px 0 6px; font-weight: 700; }
+.msg-bubble h1 { font-size: 18px; }
+.msg-bubble h2 { font-size: 15px; }
+.msg-bubble h3 { font-size: 13px; }
+.msg-bubble p { margin: 6px 0; }
+.msg-bubble ul, .msg-bubble ol { margin: 6px 0; padding-left: 20px; }
+.msg-bubble li { margin: 3px 0; }
+.msg-bubble code {
+  background: color-mix(in srgb, var(--fondo-app) 60%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--fuente-codigo);
+  font-size: 12px;
+}
+.msg-bubble pre {
+  background: var(--fondo-app);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.msg-bubble pre code { background: none; padding: 0; }
+.msg-bubble strong { font-weight: 700; }
+.msg-bubble em { font-style: italic; }
+.msg-bubble hr { border: none; border-top: 1px solid var(--borde); margin: 10px 0; }
+.msg-bubble blockquote {
+  border-left: 3px solid var(--primario);
+  padding-left: 10px;
+  margin: 8px 0;
+  color: var(--texto-secundario);
+}
+.msg-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
+.msg-bubble table th {
+  background: color-mix(in srgb, var(--primario) 20%, transparent);
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--borde);
+  font-weight: 600;
+}
+.msg-bubble table td {
+  padding: 5px 10px;
+  border: 1px solid var(--borde);
+}
+.msg-bubble table tr:nth-child(even) td { background: color-mix(in srgb, var(--fondo-app) 30%, transparent); }
+
+/* ═══════════════════════════════════════════════════
+   GRÁFICAS EN CHAT
+═══════════════════════════════════════════════════ */
+.chart-container {
+  background: var(--fondo-app);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0;
+  position: relative;
+}
+.chart-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+.chart-canvas { display: block; width: 100%; }
+.chart-actions {
+  position: absolute; top: 12px; right: 12px;
+  display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s;
+}
+.chart-container:hover .chart-actions { opacity: 1; }
+.chart-tooltip {
+  position: fixed;
+  background: var(--fondo-sidebar);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* KPI CARDS */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin: 8px 0; }
+.kpi-card {
+  background: var(--fondo-app);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.kpi-value { font-size: 22px; font-weight: 800; color: var(--texto-principal); }
+.kpi-label { font-size: 11px; color: var(--texto-secundario); margin: 3px 0; }
+.kpi-change { font-size: 12px; font-weight: 600; }
+.kpi-change.positive { color: var(--color-exito); }
+.kpi-change.negative { color: var(--color-error); }
+
+/* DATA TABLE */
+.data-table-wrap { overflow-x: auto; margin: 8px 0; border-radius: 8px; border: 1px solid var(--borde); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th {
+  background: var(--fondo-sidebar);
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--primario);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--texto-secundario);
+}
+.data-table th:hover { color: var(--texto-principal); }
+.data-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--borde) 40%, transparent);
+}
+.data-table tr:hover td { background: color-mix(in srgb, var(--primario) 8%, transparent); }
+.data-table td.max-val { color: var(--color-exito); font-weight: 700; }
+.data-table td.min-val { color: var(--color-error); font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: 900;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--fondo-chat);
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  animation: modalIn 0.25s ease both;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(-20px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--borde);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-size: 16px; font-weight: 700; }
+.modal-body { padding: 20px; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid var(--borde); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* CONFIG PANEL ITEMS */
+.config-section { margin-bottom: 24px; }
+.config-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--texto-secundario);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--borde);
+}
+.config-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+.config-row-label { font-size: 13px; }
+.config-row-sub { font-size: 11px; color: var(--texto-secundario); margin-top: 2px; }
+.theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.theme-card {
+  border: 2px solid var(--borde);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.theme-card:hover { border-color: var(--primario); }
+.theme-card.active { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 10%, transparent); }
+.theme-swatch { display: flex; gap: 3px; justify-content: center; margin-bottom: 6px; }
+.theme-dot { width: 16px; height: 16px; border-radius: 50%; }
+.theme-name { font-size: 11px; font-weight: 600; }
+
+/* WELCOME SCREEN SUGGESTIONS */
+.welcome-suggestions {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 20px;
+}
+.suggestion-item {
+  background: var(--fondo-sidebar);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--texto-secundario);
+  text-align: left;
+  transition: all 0.15s;
+  display: flex; align-items: center; gap: 8px;
+}
+.suggestion-item:hover { border-color: var(--primario); color: var(--texto-principal); background: color-mix(in srgb, var(--primario) 8%, transparent); }
+.suggestion-icon { font-size: 14px; flex-shrink: 0; }
+
+/* HIDDEN FILE INPUT */
+#file-input { display: none; }
+
+/* TOAST */
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  background: var(--fondo-sidebar);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  animation: toastIn 0.3s ease both;
+  max-width: 300px;
+  display: flex; align-items: center; gap: 8px;
+}
+.toast.success { border-color: var(--color-exito); }
+.toast.error { border-color: var(--color-error); }
+.toast.info { border-color: var(--primario); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateX(20px); } }
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  .chat-sidebar { display: none; }
+  .chat-sidebar.mobile-open { display: flex; position: fixed; inset: 0; z-index: 500; width: 260px; }
+  .msg-content { max-width: 90%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 1 — BIENVENIDA / API KEY
+═══════════════════════════════════════════════════ -->
+<div id="screen-apikey" class="screen">
+  <div class="welcome-card">
+    <div class="welcome-avatar-wrap">
+      <div id="avatar-welcome"></div>
+    </div>
+    <div class="welcome-title" id="welcome-title">Agente IA</div>
+    <div class="welcome-subtitle" id="welcome-subtitle">Análisis inteligente de datos Power BI</div>
+
+    <div id="panel-new-key">
+      <div class="form-group">
+        <label class="form-label">Modelo de IA</label>
+        <select id="llm-select" class="form-select">
+          <option value="openai-gpt4o-mini">⚡ GPT-4o mini — Rápido y económico</option>
+          <option value="openai-gpt4o">🧠 GPT-4o — Máxima calidad</option>
+          <option value="anthropic-claude-haiku">🔵 Claude Haiku 3.5 — Ultra rápido</option>
+          <option value="google-gemini-flash">🟡 Gemini 2.0 Flash — Más económico</option>
+          <option value="groq-llama">🟢 Groq LLaMA 3.3 — Velocidad extrema</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <div class="input-row">
+          <input type="password" id="apikey-input" class="form-input"
+            placeholder="Ingresa tu API Key..." autocomplete="off" spellcheck="false">
+          <button class="btn-icon" onclick="toggleKeyVisibility()" title="Mostrar/ocultar" id="btn-eye">👁</button>
+        </div>
+      </div>
+      <div id="apikey-status" class="status-msg"></div>
+      <button class="btn-primary" id="btn-validate" onclick="validateApiKey()">
+        <span id="validate-btn-text">✓ Validar y Continuar</span>
+      </button>
+    </div>
+
+    <div id="panel-existing-key" style="display:none">
+      <div class="key-display" id="key-display-mask">
+        <span>••••••••••••<span id="key-suffix"></span></span>
+        <span style="color:var(--texto-placeholder);font-size:11px;" id="key-llm-label"></span>
+      </div>
+      <div style="height:12px"></div>
+      <button class="btn-primary" onclick="proceedWithSavedKey()">▶ Continuar</button>
+      <div style="height:8px"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" style="flex:1" onclick="showChangeKey()">✏️ Cambiar</button>
+        <button class="btn-danger" style="flex:1" onclick="forgetKey()">🗑 Olvidar</button>
+      </div>
+    </div>
+
+    <div style="height:16px"></div>
+    <div style="font-size:11px;color:var(--texto-placeholder);text-align:center;">
+      🔒 Tu API Key se guarda cifrada en el navegador.<br>Para máxima seguridad corporativa, usa Azure Key Vault.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 2 — CARGA DE DATOS
+═══════════════════════════════════════════════════ -->
+<div id="screen-data" class="screen">
+  <div class="data-header">
+    <div>
+      <div class="data-header-title">📊 Configura el conocimiento de tu Agente</div>
+      <div class="data-header-sub">Carga las tablas de datos que el agente usará para responder preguntas</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-secondary" onclick="showSettings()">⚙️ Config</button>
+      <button class="btn-secondary" onclick="reloadData()">🔄 Recargar</button>
+    </div>
+  </div>
+
+  <div class="data-body">
+    <!-- DROPZONE -->
+    <div class="dropzone" id="dropzone"
+      ondrop="handleDrop(event)"
+      ondragover="handleDragOver(event)"
+      ondragleave="handleDragLeave(event)"
+      onclick="document.getElementById('file-input').click()">
+      <div class="dropzone-icon">📁</div>
+      <div class="dropzone-title">Arrastra tus archivos aquí</div>
+      <div class="dropzone-sub">o haz clic para seleccionar</div>
+      <div class="dropzone-formats">Formatos: CSV · Excel (.xlsx) · Datos copiados del portapapeles</div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <span style="font-size:11px;background:color-mix(in srgb,var(--primario) 15%,transparent);color:var(--primario);padding:3px 10px;border-radius:20px;cursor:pointer" onclick="event.stopPropagation();pasteFromClipboard()">📋 Pegar del portapapeles</span>
+        <span style="font-size:11px;background:color-mix(in srgb,var(--color-advertencia) 15%,transparent);color:var(--color-advertencia);padding:3px 10px;border-radius:20px;cursor:pointer" onclick="event.stopPropagation();loadDaxData()">⚡ Usar datos DAX</span>
+      </div>
+    </div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" multiple onchange="handleFileInput(event)">
+
+    <!-- TABLES LIST -->
+    <div class="tables-list" id="tables-list"></div>
+
+    <!-- TOKEN INDICATOR -->
+    <div class="token-indicator" id="token-indicator" style="display:none">
+      <span style="font-size:11px;color:var(--texto-secundario)">Contexto:</span>
+      <div class="token-bar">
+        <div class="token-bar-fill" id="token-bar-fill" style="width:0%"></div>
+      </div>
+      <span id="token-count" style="font-size:11px;white-space:nowrap;font-family:var(--fuente-codigo)"></span>
+    </div>
+
+    <div class="data-footer">
+      <div class="data-options">
+        <label class="toggle-label">
+          <span class="toggle"><input type="checkbox" id="persist-data"><span class="toggle-slider"></span></span>
+          Persistir datos entre sesiones
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" onclick="goBackToKey()">← Atrás</button>
+        <button class="btn-primary" id="btn-start-chat" onclick="startChat()" style="width:auto" disabled>
+          🚀 Iniciar Agente
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 3 — CHAT PRINCIPAL
+═══════════════════════════════════════════════════ -->
+<div id="screen-chat" class="screen">
+  <!-- SIDEBAR -->
+  <div class="chat-sidebar" id="chat-sidebar">
+    <div class="sidebar-header">
+      <div id="sidebar-avatar-small"></div>
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-name" id="sidebar-agent-name">Agente IA</div>
+        <div class="sidebar-brand-sub" id="sidebar-company-name">Power BI</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="sidebar-section-title">Acciones</div>
+      <div class="sidebar-item" onclick="clearChat()"><span class="sidebar-item-icon">✨</span><span class="sidebar-item-text">Nueva conversación</span></div>
+      <div class="sidebar-item" onclick="showScreen('screen-data')"><span class="sidebar-item-icon">📊</span><span class="sidebar-item-text">Cambiar datos</span></div>
+      <div class="sidebar-item" onclick="exportChat()"><span class="sidebar-item-icon">💾</span><span class="sidebar-item-text">Exportar chat</span></div>
+      <div class="sidebar-section-title" style="margin-top:16px">Datos cargados</div>
+      <div id="sidebar-tables-list"></div>
+      <div class="sidebar-section-title" style="margin-top:16px">Preguntas sugeridas</div>
+      <div id="sidebar-suggestions"></div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="sidebar-item" onclick="showSettings()"><span class="sidebar-item-icon">⚙️</span><span class="sidebar-item-text">Configuración</span></div>
+    </div>
+  </div>
+
+  <!-- MAIN CHAT -->
+  <div class="chat-main">
+    <div class="chat-header">
+      <button class="btn-icon" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+      <div id="header-avatar"></div>
+      <div class="chat-header-info">
+        <div class="chat-header-name" id="header-agent-name">Agente IA</div>
+        <div class="chat-header-status">
+          <div class="status-dot"></div>
+          <span id="header-status-text">En línea</span>
+        </div>
+      </div>
+      <div class="chat-header-actions">
+        <button class="btn-icon" onclick="clearChat()" title="Nueva conversación">✨</button>
+        <button class="btn-icon" onclick="showSettings()" title="Configuración">⚙️</button>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chat-messages">
+      <!-- Welcome state shown before first message -->
+      <div id="chat-welcome-state" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 20px;gap:16px;opacity:0.9">
+        <div id="welcome-chat-avatar"></div>
+        <div style="font-size:20px;font-weight:700" id="welcome-chat-title">¡Hola! Soy tu Agente IA</div>
+        <div style="font-size:13px;color:var(--texto-secundario);max-width:400px" id="welcome-chat-sub">Estoy listo para analizar tus datos. Puedes preguntarme sobre tendencias, resúmenes, comparaciones y más.</div>
+        <div id="welcome-suggestions-chat" style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:480px"></div>
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-wrap">
+        <textarea id="chat-input" class="chat-textarea" rows="1"
+          placeholder="Pregunta algo sobre tus datos..."
+          onkeydown="handleInputKey(event)"
+          oninput="autoResizeTextarea(this)"></textarea>
+        <button class="btn-send" id="btn-send" onclick="sendMessage()">↑</button>
+      </div>
+      <div class="chat-input-hints" id="chat-hints">
+        <span class="hint-chip" onclick="insertHint(this)">📈 Tendencias</span>
+        <span class="hint-chip" onclick="insertHint(this)">📊 Resumen total</span>
+        <span class="hint-chip" onclick="insertHint(this)">🔝 Top 10</span>
+        <span class="hint-chip" onclick="insertHint(this)">📉 Variación %</span>
+        <span class="hint-chip" onclick="insertHint(this)">🔍 Valor atípico</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     MODAL — CONFIGURACIÓN
+═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-settings">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">⚙️ Configuración del Agente</div>
+      <button class="btn-icon" onclick="closeModal('modal-settings')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="config-section">
+        <div class="config-section-title">🤖 Modelo de IA</div>
+        <div class="config-row">
+          <div><div class="config-row-label">LLM activo</div><div class="config-row-sub">El modelo que responde tus preguntas</div></div>
+        </div>
+        <select id="settings-llm" class="form-select" onchange="changeLLM(this.value)">
+          <option value="openai-gpt4o-mini">⚡ GPT-4o mini</option>
+          <option value="openai-gpt4o">🧠 GPT-4o</option>
+          <option value="anthropic-claude-haiku">🔵 Claude Haiku 3.5</option>
+          <option value="google-gemini-flash">🟡 Gemini 2.0 Flash</option>
+          <option value="groq-llama">🟢 Groq LLaMA 3.3</option>
+        </select>
+      </div>
+      <div class="config-section">
+        <div class="config-section-title">🎨 Tema corporativo</div>
+        <div class="theme-grid" id="theme-grid"></div>
+      </div>
+      <div class="config-section">
+        <div class="config-section-title">🔑 API Key</div>
+        <div class="config-row">
+          <div><div class="config-row-label">Key guardada</div><div class="config-row-sub" id="settings-key-display"></div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-secondary" onclick="showScreen('screen-apikey');closeModal('modal-settings')">✏️ Cambiar key</button>
+          <button class="btn-danger" onclick="forgetKey()">🗑 Olvidar key</button>
+        </div>
+      </div>
+      <div class="config-section">
+        <div class="config-section-title">⚡ Optimización</div>
+        <div class="config-row">
+          <div><div class="config-row-label">Caché de respuestas</div><div class="config-row-sub">Reutiliza respuestas para preguntas repetidas</div></div>
+          <label class="toggle"><input type="checkbox" id="toggle-cache" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="config-row">
+          <div><div class="config-row-label">Streaming</div><div class="config-row-sub">Muestra respuesta mientras llega</div></div>
+          <label class="toggle"><input type="checkbox" id="toggle-streaming" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="config-row">
+          <div><div class="config-row-label">Compresión de contexto</div><div class="config-row-sub">Envía solo datos relevantes a cada pregunta</div></div>
+          <label class="toggle"><input type="checkbox" id="toggle-compress" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="config-row">
+          <div><div class="config-row-label">Temperatura</div><div class="config-row-sub">Creatividad del modelo (0=preciso, 1=creativo)</div></div>
+          <input type="range" id="temperature-slider" min="0" max="1" step="0.1" value="0.3" style="width:100px" oninput="document.getElementById('temp-val').textContent=this.value">
+          <span id="temp-val" style="font-family:var(--fuente-codigo);font-size:12px;margin-left:6px">0.3</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" style="width:auto" onclick="closeModal('modal-settings')">✓ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CHART EXPAND -->
+<div class="modal-overlay" id="modal-chart">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-chart-title">Gráfica</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn-icon" onclick="downloadExpandedChart()" title="Descargar PNG">💾</button>
+        <button class="btn-icon" onclick="closeModal('modal-chart')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-chart-body"></div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="chart-tooltip" id="chart-tooltip"></div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   ██████████████████████████████████████████████████████████████
+   AGENTE IA POWER BI — CÓDIGO JAVASCRIPT COMPLETO
+   ██████████████████████████████████████████████████████████████
+═══════════════════════════════════════════════════════════════════ */
+
+// ═══════════════════════════════════════════════════
+// CONFIGURACIÓN GLOBAL
+// ═══════════════════════════════════════════════════
+const CONFIG = {
+  // Cambiar esta variable para cambiar el LLM globalmente
+  LLM_ACTIVO: 'openai-gpt4o-mini',
+  MAX_TOKENS: 4096,
+  TEMPERATURE: 0.3,
+  MAX_CONTEXT_TOKENS: 12000,   // tokens máximos de contexto de datos
+  MAX_HISTORY: 20,             // mensajes de historial a mantener
+  CACHE_ENABLED: true,
+  STREAMING_ENABLED: true,
+  COMPRESS_CONTEXT: true,
+  MAX_ROWS_PER_TABLE: 500,     // filas máximas por tabla en contexto
+  MAX_COLS_CONTEXT: 20,        // columnas máximas en contexto
+};
+
+// ═══════════════════════════════════════════════════
+// CONFIGURACIÓN DE TEMAS CORPORATIVOS
+// ═══════════════════════════════════════════════════
+const TEMAS_PREDEFINIDOS = {
+  OSCURO_CORPORATIVO: {
+    nombre: 'Oscuro Corporativo',
+    primario:           '#0F62FE',
+    secundario:         '#393939',
+    acento:             '#0043CE',
+    fondo_app:          '#161616',
+    fondo_chat:         '#1C1C1C',
+    fondo_input:        '#262626',
+    fondo_header:       '#0F0F0F',
+    fondo_sidebar:      '#141414',
+    burbuja_usuario:    '#0F62FE',
+    burbuja_agente:     '#262626',
+    texto_burbuja_usr:  '#FFFFFF',
+    texto_burbuja_agt:  '#E0E0E0',
+    texto_principal:    '#F4F4F4',
+    texto_secundario:   '#8D8D8D',
+    texto_placeholder:  '#525252',
+    borde:              '#393939',
+    borde_input:        '#525252',
+    borde_focus:        '#0F62FE',
+    color_exito:        '#24A148',
+    color_error:        '#DA1E28',
+    color_advertencia:  '#F1C21B',
+    color_carga:        '#0F62FE',
+    grafica_paleta:     ['#0F62FE','#08BDBA','#BE95FF','#FFB784','#42BE65','#EE5396'],
+    nombre_agente:      'Agente IA',
+    nombre_empresa:     'Power BI',
+    subtitulo_agente:   'Análisis inteligente de datos',
+    swatches:           ['#0F62FE','#161616','#24A148'],
+  },
+  CLARO_PROFESIONAL: {
+    nombre: 'Claro Profesional',
+    primario:           '#0050E6',
+    secundario:         '#4D5358',
+    acento:             '#003BBD',
+    fondo_app:          '#F5F7FA',
+    fondo_chat:         '#FFFFFF',
+    fondo_input:        '#F0F2F5',
+    fondo_header:       '#FFFFFF',
+    fondo_sidebar:      '#F0F2F5',
+    burbuja_usuario:    '#0050E6',
+    burbuja_agente:     '#F0F2F5',
+    texto_burbuja_usr:  '#FFFFFF',
+    texto_burbuja_agt:  '#1A1A2E',
+    texto_principal:    '#1A1A2E',
+    texto_secundario:   '#4D5358',
+    texto_placeholder:  '#8D8D8D',
+    borde:              '#DDE1E6',
+    borde_input:        '#C1C7CD',
+    borde_focus:        '#0050E6',
+    color_exito:        '#198038',
+    color_error:        '#A2191F',
+    color_advertencia:  '#B28600',
+    color_carga:        '#0050E6',
+    grafica_paleta:     ['#0050E6','#00B0FF','#7B61FF','#FF6B6B','#00C853','#FF9100'],
+    nombre_agente:      'Agente IA',
+    nombre_empresa:     'Power BI',
+    subtitulo_agente:   'Análisis inteligente de datos',
+    swatches:           ['#0050E6','#F5F7FA','#198038'],
+  },
+  VERDE_EMERALD: {
+    nombre: 'Emerald Dark',
+    primario:           '#10B981',
+    secundario:         '#1F2937',
+    acento:             '#059669',
+    fondo_app:          '#0F172A',
+    fondo_chat:         '#1E293B',
+    fondo_input:        '#334155',
+    fondo_header:       '#0F172A',
+    fondo_sidebar:      '#1A2744',
+    burbuja_usuario:    '#10B981',
+    burbuja_agente:     '#273549',
+    texto_burbuja_usr:  '#FFFFFF',
+    texto_burbuja_agt:  '#E2E8F0',
+    texto_principal:    '#F1F5F9',
+    texto_secundario:   '#94A3B8',
+    texto_placeholder:  '#475569',
+    borde:              '#334155',
+    borde_input:        '#475569',
+    borde_focus:        '#10B981',
+    color_exito:        '#10B981',
+    color_error:        '#EF4444',
+    color_advertencia:  '#F59E0B',
+    color_carga:        '#10B981',
+    grafica_paleta:     ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EF4444','#EC4899'],
+    nombre_agente:      'Agente IA',
+    nombre_empresa:     'Power BI',
+    subtitulo_agente:   'Análisis inteligente de datos',
+    swatches:           ['#10B981','#0F172A','#3B82F6'],
+  }
+};
+
+let TEMA_ACTUAL = {...TEMAS_PREDEFINIDOS.OSCURO_CORPORATIVO};
+
+// ═══════════════════════════════════════════════════
+// ESTADO DE LA APLICACIÓN
+// ═══════════════════════════════════════════════════
+const STATE = {
+  apiKey: null,
+  llmModel: 'openai-gpt4o-mini',
+  tables: [],          // Array de {name, columns, rows, excluded_cols, summary}
+  context: null,       // Contexto pre-procesado
+  messages: [],        // Historial del chat
+  isLoading: false,
+  responseCache: new Map(),
+  avatarState: 'idle',
+  sidebarOpen: true,
+  expandedChartCanvas: null,
+  temaActivoKey: 'OSCURO_CORPORATIVO',
+};
+
+// ═══════════════════════════════════════════════════
+// CONFIGURACIÓN DE ENDPOINTS LLM
+// ═══════════════════════════════════════════════════
+const LLM_CONFIG = {
+  'openai-gpt4o-mini': {
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    model: 'gpt-4o-mini',
+    authHeader: (k) => ({ 'Authorization': `Bearer ${k}` }),
+    buildBody: (msgs, key) => ({
+      model: 'gpt-4o-mini',
+      messages: msgs,
+      max_tokens: CONFIG.MAX_TOKENS,
+      temperature: CONFIG.TEMPERATURE,
+      stream: CONFIG.STREAMING_ENABLED,
+    }),
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') return null;
+      try { const d = JSON.parse(line.slice(6)); return d.choices?.[0]?.delta?.content || null; } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'GPT-4o mini',
+  },
+  'openai-gpt4o': {
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    model: 'gpt-4o',
+    authHeader: (k) => ({ 'Authorization': `Bearer ${k}` }),
+    buildBody: (msgs) => ({
+      model: 'gpt-4o',
+      messages: msgs,
+      max_tokens: CONFIG.MAX_TOKENS,
+      temperature: CONFIG.TEMPERATURE,
+      stream: CONFIG.STREAMING_ENABLED,
+    }),
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') return null;
+      try { const d = JSON.parse(line.slice(6)); return d.choices?.[0]?.delta?.content || null; } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'GPT-4o',
+  },
+  'anthropic-claude-haiku': {
+    endpoint: 'https://api.anthropic.com/v1/messages',
+    model: 'claude-haiku-4-5-20251001',
+    authHeader: (k) => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }),
+    buildBody: (msgs) => {
+      const system = msgs.find(m => m.role === 'system')?.content || '';
+      const chatMsgs = msgs.filter(m => m.role !== 'system');
+      return {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: CONFIG.MAX_TOKENS,
+        system: system || undefined,
+        messages: chatMsgs,
+        stream: CONFIG.STREAMING_ENABLED,
+      };
+    },
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ')) return null;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if (d.type === 'content_block_delta') return d.delta?.text || null;
+        return null;
+      } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'Claude Haiku 3.5',
+  },
+  'google-gemini-flash': {
+    endpoint: (k) => `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${k}&alt=sse`,
+    authHeader: () => ({}),
+    buildBody: (msgs) => {
+      const contents = msgs.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+      return { contents };
+    },
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ')) return null;
+      try {
+        const d = JSON.parse(line.slice(6));
+        return d.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'Gemini 2.0 Flash',
+    dynamicEndpoint: true,
+  },
+  'groq-llama': {
+    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.3-70b-versatile',
+    authHeader: (k) => ({ 'Authorization': `Bearer ${k}` }),
+    buildBody: (msgs) => ({
+      model: 'llama-3.3-70b-versatile',
+      messages: msgs,
+      max_tokens: CONFIG.MAX_TOKENS,
+      temperature: CONFIG.TEMPERATURE,
+      stream: CONFIG.STREAMING_ENABLED,
+    }),
+    parseChunk: (line) => {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') return null;
+      try { const d = JSON.parse(line.slice(6)); return d.choices?.[0]?.delta?.content || null; } catch { return null; }
+    },
+    testMsg: [{ role: 'user', content: 'Hi' }],
+    label: 'Groq LLaMA 3.3',
+  },
+};
+
+// ═══════════════════════════════════════════════════
+// AVATAR SVG
+// ═══════════════════════════════════════════════════
+function buildAvatarSVG(size = 96, state = 'idle') {
+  const s = size;
+  const c = Math.round(s * 0.5);
+  return `<svg width="${s}" height="${s}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="ag${size}" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="color-mix(in srgb, var(--primario) 80%, #fff)"/>
+        <stop offset="100%" stop-color="var(--primario)"/>
+      </radialGradient>
+      <radialGradient id="agb${size}" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="color-mix(in srgb, var(--primario) 30%, var(--fondo-chat))"/>
+        <stop offset="100%" stop-color="transparent"/>
+      </radialGradient>
+      <filter id="gs${size}"><feGaussianBlur stdDeviation="1"/></filter>
+    </defs>
+    <!-- Glow background -->
+    <circle cx="50" cy="50" r="46" fill="url(#agb${size})" opacity="0.5"/>
+    <!-- Body -->
+    <rect x="28" y="48" width="44" height="32" rx="10" fill="url(#ag${size})"/>
+    <!-- Head -->
+    <rect x="30" y="18" width="40" height="34" rx="14" fill="url(#ag${size})"/>
+    <!-- Face shine -->
+    <ellipse cx="42" cy="26" rx="8" ry="5" fill="rgba(255,255,255,0.15)" transform="rotate(-15 42 26)"/>
+    <!-- Eyes -->
+    <g class="avatar-eyes-${size}">
+      <rect x="36" y="29" width="8" height="6" rx="3" fill="white"/>
+      <rect x="56" y="29" width="8" height="6" rx="3" fill="white"/>
+      <circle cx="40" cy="32" r="2.5" fill="rgba(0,0,0,0.7)"/>
+      <circle cx="60" cy="32" r="2.5" fill="rgba(0,0,0,0.7)"/>
+      <circle cx="41" cy="31" r="1" fill="white" opacity="0.8"/>
+      <circle cx="61" cy="31" r="1" fill="white" opacity="0.8"/>
+    </g>
+    <!-- Mouth -->
+    <path d="M42 42 Q50 47 58 42" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <!-- Antenna -->
+    <line x1="50" y1="18" x2="50" y2="10" stroke="var(--primario)" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="50" cy="8" r="3.5" fill="var(--acento)">
+      ${state !== 'idle' ? '<animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>' : ''}
+    </circle>
+    <!-- Arms -->
+    <rect x="14" y="50" width="14" height="8" rx="4" fill="url(#ag${size})"/>
+    <rect x="72" y="50" width="14" height="8" rx="4" fill="url(#ag${size})"/>
+    <!-- Body detail -->
+    <rect x="43" y="55" width="14" height="4" rx="2" fill="rgba(255,255,255,0.2)"/>
+    <circle cx="50" cy="65" r="3" fill="rgba(255,255,255,0.25)"/>
+    ${state === 'thinking' ? `
+    <!-- Thinking animation -->
+    <circle cx="33" cy="14" r="3" fill="var(--primario)" opacity="0.8">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="1.2s" begin="0s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="43" cy="10" r="4" fill="var(--primario)" opacity="0.8">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="1.2s" begin="0.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="55" cy="7" r="5" fill="var(--primario)" opacity="0.8">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="1.2s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>` : ''}
+    ${state === 'responding' ? `
+    <!-- Voice waves -->
+    <g opacity="0.6">
+      <path d="M70 50 Q75 55 70 60" stroke="var(--primario)" stroke-width="2" fill="none">
+        <animate attributeName="opacity" values="0;1;0" dur="1s" repeatCount="indefinite"/>
+      </path>
+      <path d="M73 46 Q80 55 73 64" stroke="var(--primario)" stroke-width="2" fill="none">
+        <animate attributeName="opacity" values="0;1;0" dur="1s" begin="0.2s" repeatCount="indefinite"/>
+      </path>
+    </g>` : ''}
+  </svg>`;
+}
+
+function setAvatarState(newState) {
+  STATE.avatarState = newState;
+  const els = document.querySelectorAll('.avatar-container');
+  els.forEach(el => {
+    const size = el.dataset.size || 32;
+    el.innerHTML = buildAvatarSVG(parseInt(size), newState);
+  });
+  // Update all named avatar containers
+  const containers = {
+    'avatar-welcome': 96,
+    'welcome-chat-avatar': 64,
+    'header-avatar': 40,
+    'sidebar-avatar-small': 32,
+  };
+  Object.entries(containers).forEach(([id, sz]) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = buildAvatarSVG(sz, newState);
+  });
+}
+
+function initAvatars() {
+  setAvatarState('idle');
+  // Set in messages (dynamic)
+}
+
+// ═══════════════════════════════════════════════════
+// TEMA — APLICAR
+// ═══════════════════════════════════════════════════
+function applyTheme(tema) {
+  const root = document.documentElement.style;
+  const map = {
+    '--primario': tema.primario,
+    '--secundario': tema.secundario,
+    '--acento': tema.acento,
+    '--fondo-app': tema.fondo_app,
+    '--fondo-chat': tema.fondo_chat,
+    '--fondo-input': tema.fondo_input,
+    '--fondo-header': tema.fondo_header,
+    '--fondo-sidebar': tema.fondo_sidebar,
+    '--burbuja-usuario': tema.burbuja_usuario,
+    '--burbuja-agente': tema.burbuja_agente,
+    '--texto-burbuja-usr': tema.texto_burbuja_usr,
+    '--texto-burbuja-agt': tema.texto_burbuja_agt,
+    '--texto-principal': tema.texto_principal,
+    '--texto-secundario': tema.texto_secundario,
+    '--texto-placeholder': tema.texto_placeholder,
+    '--borde': tema.borde,
+    '--borde-input': tema.borde_input,
+    '--borde-focus': tema.borde_focus,
+    '--color-exito': tema.color_exito,
+    '--color-error': tema.color_error,
+    '--color-advertencia': tema.color_advertencia,
+    '--color-carga': tema.color_carga,
+  };
+  Object.entries(map).forEach(([k, v]) => root.setProperty(k, v));
+  TEMA_ACTUAL = {...tema};
+  // Update branding
+  document.getElementById('welcome-title').textContent = tema.nombre_agente;
+  document.getElementById('welcome-subtitle').textContent = tema.subtitulo_agente;
+  document.getElementById('sidebar-agent-name').textContent = tema.nombre_agente;
+  document.getElementById('sidebar-company-name').textContent = tema.nombre_empresa;
+  document.getElementById('header-agent-name').textContent = tema.nombre_agente;
+  document.getElementById('welcome-chat-title').textContent = `¡Hola! Soy ${tema.nombre_agente}`;
+  document.getElementById('welcome-chat-sub').textContent = `Soy el asistente de ${tema.nombre_empresa}. Estoy listo para analizar tus datos.`;
+  initAvatars();
+}
+
+// ═══════════════════════════════════════════════════
+// API KEY — OFUSCACIÓN Y PERSISTENCIA
+// ═══════════════════════════════════════════════════
+function obfuscate(str) {
+  const key = 'pbiai2024xz';
+  let r = '';
+  for (let i = 0; i < str.length; i++) {
+    r += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return btoa(r);
+}
+
+function deobfuscate(encoded) {
+  try {
+    const key = 'pbiai2024xz';
+    const str = atob(encoded);
+    let r = '';
+    for (let i = 0; i < str.length; i++) {
+      r += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return r;
+  } catch { return null; }
+}
+
+function saveApiKey(key, model) {
+  localStorage.setItem('pbai_k', obfuscate(key));
+  localStorage.setItem('pbai_m', model);
+}
+
+function loadSavedKey() {
+  const enc = localStorage.getItem('pbai_k');
+  const model = localStorage.getItem('pbai_m') || 'openai-gpt4o-mini';
+  if (!enc) return null;
+  return { key: deobfuscate(enc), model };
+}
+
+function clearSavedKey() {
+  localStorage.removeItem('pbai_k');
+  localStorage.removeItem('pbai_m');
+}
+
+function getApiKey() {
+  const enc = localStorage.getItem('pbai_k');
+  if (!enc) return null;
+  return deobfuscate(enc);
+}
+
+// UI helpers for API Key screen
+function toggleKeyVisibility() {
+  const inp = document.getElementById('apikey-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function showChangeKey() {
+  document.getElementById('panel-existing-key').style.display = 'none';
+  document.getElementById('panel-new-key').style.display = 'block';
+  document.getElementById('apikey-input').value = '';
+  document.getElementById('apikey-status').className = 'status-msg';
+}
+
+function forgetKey() {
+  clearSavedKey();
+  STATE.apiKey = null;
+  // Also clear data
+  sessionStorage.removeItem('pbai_tables');
+  localStorage.removeItem('pbai_tables_persist');
+  STATE.tables = [];
+  STATE.context = null;
+  showScreen('screen-apikey');
+  document.getElementById('panel-existing-key').style.display = 'none';
+  document.getElementById('panel-new-key').style.display = 'block';
+  document.getElementById('apikey-input').value = '';
+  showStatus('apikey-status', '', '');
+  toast('API Key eliminada', 'info');
+}
+
+async function validateApiKey() {
+  const key = document.getElementById('apikey-input').value.trim();
+  const model = document.getElementById('llm-select').value;
+  if (!key) { showStatus('apikey-status', 'Ingresa una API Key', 'error'); return; }
+
+  const btn = document.getElementById('btn-validate');
+  const btnText = document.getElementById('validate-btn-text');
+  btn.disabled = true;
+  btnText.textContent = '⏳ Validando...';
+  setAvatarState('thinking');
+
+  try {
+    const valid = await testApiKey(key, model);
+    if (valid) {
+      saveApiKey(key, model);
+      STATE.llmModel = model;
+      setAvatarState('responding');
+      showStatus('apikey-status', '✓ API Key válida. Guardada correctamente.', 'success');
+      setTimeout(() => {
+        setAvatarState('idle');
+        checkSavedData();
+      }, 900);
+    } else {
+      showStatus('apikey-status', '✗ API Key inválida o sin permisos. Verifica e intenta de nuevo.', 'error');
+      setAvatarState('idle');
+    }
+  } catch(e) {
+    showStatus('apikey-status', `✗ Error: ${e.message}`, 'error');
+    setAvatarState('idle');
+  }
+  btn.disabled = false;
+  btnText.textContent = '✓ Validar y Continuar';
+}
+
+async function testApiKey(key, model) {
+  const cfg = LLM_CONFIG[model];
+  if (!cfg) throw new Error('Modelo no reconocido');
+  const headers = { 'Content-Type': 'application/json', ...cfg.authHeader(key) };
+  const body = cfg.buildBody([{ role: 'user', content: 'test' }], key);
+  body.stream = false;
+  body.max_tokens = 5;
+  const endpoint = cfg.dynamicEndpoint ? cfg.endpoint(key) : cfg.endpoint;
+  const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (resp.status === 401 || resp.status === 403) return false;
+  if (resp.status === 400) {
+    const txt = await resp.text();
+    if (txt.includes('auth') || txt.includes('key') || txt.includes('invalid')) return false;
+    return true; // 400 but for other reasons = key ok
+  }
+  return resp.ok || resp.status < 500;
+}
+
+function proceedWithSavedKey() {
+  checkSavedData();
+}
+
+// ═══════════════════════════════════════════════════
+// NAVEGACIÓN DE PANTALLAS
+// ═══════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function initApp() {
+  // Load theme preference
+  const savedTheme = localStorage.getItem('pbai_theme');
+  if (savedTheme && TEMAS_PREDEFINIDOS[savedTheme]) {
+    STATE.temaActivoKey = savedTheme;
+    applyTheme(TEMAS_PREDEFINIDOS[savedTheme]);
+  } else {
+    applyTheme(TEMAS_PREDEFINIDOS.OSCURO_CORPORATIVO);
+  }
+
+  // Init settings theme grid
+  initThemeGrid();
+
+  // Check for saved API key
+  const saved = loadSavedKey();
+  if (saved && saved.key) {
+    STATE.llmModel = saved.model || 'openai-gpt4o-mini';
+    const suffix = saved.key.slice(-4);
+    document.getElementById('key-suffix').textContent = suffix;
+    document.getElementById('key-llm-label').textContent = LLM_CONFIG[saved.model]?.label || saved.model;
+    document.getElementById('panel-existing-key').style.display = 'block';
+    document.getElementById('panel-new-key').style.display = 'none';
+  }
+
+  // Select correct LLM in dropdowns
+  document.getElementById('llm-select').value = STATE.llmModel;
+  document.getElementById('settings-llm').value = STATE.llmModel;
+
+  showScreen('screen-apikey');
+
+  // Load welcome suggestions
+  loadWelcomeSuggestions();
+
+  initAvatars();
+}
+
+function checkSavedData() {
+  // Check session or persistent storage for tables
+  let raw = sessionStorage.getItem('pbai_tables');
+  if (!raw) raw = localStorage.getItem('pbai_tables_persist');
+  if (raw) {
+    try {
+      const tables = JSON.parse(raw);
+      if (tables && tables.length > 0) {
+        STATE.tables = tables;
+        rebuildContext();
+        showScreen('screen-chat');
+        renderSidebarTables();
+        renderWelcomeSuggestions();
+        return;
+      }
+    } catch {}
+  }
+  showScreen('screen-data');
+}
+
+function goBackToKey() {
+  showScreen('screen-apikey');
+}
+
+// ═══════════════════════════════════════════════════
+// CARGA DE DATOS
+// ═══════════════════════════════════════════════════
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.add('drag-over');
+}
+function handleDragLeave(e) {
+  document.getElementById('dropzone').classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  processFiles(files);
+}
+function handleFileInput(e) {
+  processFiles(e.target.files);
+  e.target.value = '';
+}
+
+async function processFiles(files) {
+  for (const file of files) {
+    const name = file.name;
+    if (name.endsWith('.csv')) {
+      await loadCSV(file);
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      await loadExcel(file);
+    }
+  }
+}
+
+// CSV PARSER — sin dependencias externas
+async function loadCSV(file) {
+  const text = await file.text();
+  const tableName = file.name.replace(/\.[^.]+$/, '');
+  const table = parseCSV(text, tableName);
+  if (table) addTable(table);
+}
+
+function parseCSV(text, name) {
+  // Detect separator
+  const line1 = text.split('\n')[0];
+  let sep = ',';
+  if ((line1.match(/;/g) || []).length > (line1.match(/,/g) || []).length) sep = ';';
+  if ((line1.match(/\t/g) || []).length > 2) sep = '\t';
+
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) { toast('CSV vacío o inválido', 'error'); return null; }
+
+  const headers = parseLine(lines[0], sep);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseLine(lines[i], sep);
+    if (vals.length === 0) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = vals[idx] ?? ''; });
+    rows.push(row);
+  }
+
+  return { name, columns: headers, rows, excluded_cols: new Set(), id: Date.now() + Math.random() };
+}
+
+function parseLine(line, sep) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === sep && !inQuotes) { result.push(current.trim()); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// EXCEL PARSER — sin dependencias externas (usando FileReader + ZIP parsing básico)
+async function loadExcel(file) {
+  // Parse XLSX usando la estructura ZIP/XML sin librerías externas
+  const buffer = await file.arrayBuffer();
+  try {
+    const data = parseXLSX(buffer, file.name);
+    if (data) addTable(data);
+    else toast('No se pudo leer el archivo Excel. Intenta exportar como CSV.', 'error');
+  } catch(e) {
+    toast('Error al leer Excel: ' + e.message, 'error');
+  }
+}
+
+function parseXLSX(buffer, fileName) {
+  // Minimal XLSX parser using ZIP structure
+  const bytes = new Uint8Array(buffer);
+  // Verify XLSX signature (PK ZIP)
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+    toast('Archivo no es un ZIP/XLSX válido', 'error');
+    return null;
+  }
+
+  // Extract files from ZIP
+  const files = extractZip(bytes);
+  if (!files) return null;
+
+  // Find shared strings
+  const ssXml = files['xl/sharedStrings.xml'] || '';
+  const sharedStrings = parseSharedStrings(ssXml);
+
+  // Find first sheet
+  const sheet1Key = Object.keys(files).find(k => k.match(/xl\/worksheets\/sheet\d+\.xml/));
+  if (!sheet1Key) return null;
+
+  const sheetXml = files[sheet1Key];
+  const rows = parseSheet(sheetXml, sharedStrings);
+
+  if (!rows || rows.length < 2) return null;
+
+  const headers = rows[0];
+  const dataRows = rows.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = r[i] ?? ''; });
+    return obj;
+  });
+
+  const name = fileName.replace(/\.[^.]+$/, '');
+  return { name, columns: headers, rows: dataRows, excluded_cols: new Set(), id: Date.now() + Math.random() };
+}
+
+function extractZip(bytes) {
+  const files = {};
+  try {
+    let offset = 0;
+    while (offset < bytes.length - 4) {
+      // Local file header signature = 0x04034b50
+      if (bytes[offset] === 0x50 && bytes[offset+1] === 0x4B &&
+          bytes[offset+2] === 0x03 && bytes[offset+3] === 0x04) {
+        const compMethod = bytes[offset+8] | (bytes[offset+9] << 8);
+        const compSize = bytes[offset+18] | (bytes[offset+19] << 8) | (bytes[offset+20] << 16) | (bytes[offset+21] << 24);
+        const nameLen = bytes[offset+26] | (bytes[offset+27] << 8);
+        const extraLen = bytes[offset+28] | (bytes[offset+29] << 8);
+        const nameBytes = bytes.slice(offset+30, offset+30+nameLen);
+        const name = new TextDecoder().decode(nameBytes);
+        const dataStart = offset + 30 + nameLen + extraLen;
+        const compData = bytes.slice(dataStart, dataStart + compSize);
+
+        if (compMethod === 0) {
+          // Stored (no compression)
+          files[name] = new TextDecoder().decode(compData);
+        } else if (compMethod === 8) {
+          // Deflate - use DecompressionStream if available
+          try {
+            // Try sync inflate via raw deflate
+            const inflated = inflateRaw(compData);
+            if (inflated) files[name] = new TextDecoder().decode(inflated);
+          } catch {}
+        }
+        offset = dataStart + compSize;
+      } else {
+        offset++;
+      }
+    }
+    return Object.keys(files).length > 0 ? files : null;
+  } catch { return null; }
+}
+
+function inflateRaw(data) {
+  // Simple fallback: try DecompressionStream (modern browsers)
+  // Returns null if not available
+  try {
+    if (typeof DecompressionStream === 'undefined') return null;
+    // Note: this is async in reality - for XLSX we use a simplified sync approach
+    // For production, use a proper XLSX library
+    return null;
+  } catch { return null; }
+}
+
+function parseSharedStrings(xml) {
+  const strings = [];
+  const re = /<si>[\s\S]*?<\/si>/g;
+  const tRe = /<t[^>]*>([\s\S]*?)<\/t>/;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const t = tRe.exec(m[0]);
+    strings.push(t ? decodeXMLEntities(t[1]) : '');
+  }
+  return strings;
+}
+
+function parseSheet(xml, sharedStrings) {
+  const rows = [];
+  const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g;
+  const cellRe = /<c\s([^>]*)>([\s\S]*?)<\/c>/g;
+  const valRe = /<v>([\s\S]*?)<\/v>/;
+  const tRe = /\st="([^"]*)"/;
+  let rowM;
+  while ((rowM = rowRe.exec(xml)) !== null) {
+    const rowContent = rowM[1];
+    const cells = [];
+    let cellM;
+    while ((cellM = cellRe.exec(rowContent)) !== null) {
+      const attrs = cellM[1];
+      const content = cellM[2];
+      const typeM = tRe.exec(attrs);
+      const type = typeM ? typeM[1] : 'n';
+      const valM = valRe.exec(content);
+      let val = valM ? valM[1] : '';
+      if (type === 's') val = sharedStrings[parseInt(val)] ?? val;
+      cells.push(val);
+    }
+    if (cells.length > 0) rows.push(cells);
+  }
+  return rows;
+}
+
+function decodeXMLEntities(str) {
+  return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#039;/g,"'").replace(/&apos;/g,"'");
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) { toast('Portapapeles vacío', 'error'); return; }
+    const table = parseCSV(text, 'Datos_pegados');
+    if (table) { addTable(table); toast('Datos pegados correctamente', 'success'); }
+  } catch(e) {
+    toast('No se pudo acceder al portapapeles. Copia los datos e inténtalo de nuevo.', 'error');
+  }
+}
+
+function loadDaxData() {
+  // Try to read DAX-injected data from window or parent
+  const daxData = window.POWERBI_DATA || window.daxData || null;
+  if (daxData) {
+    try {
+      const parsed = typeof daxData === 'string' ? JSON.parse(daxData) : daxData;
+      if (Array.isArray(parsed)) {
+        const table = {
+          name: 'Datos_PowerBI',
+          columns: Object.keys(parsed[0] || {}),
+          rows: parsed,
+          excluded_cols: new Set(),
+          id: Date.now()
+        };
+        addTable(table);
+        toast(`${parsed.length} filas cargadas desde Power BI`, 'success');
+      }
+    } catch(e) { toast('Error al leer datos DAX: ' + e.message, 'error'); }
+  } else {
+    toast('No se detectaron datos DAX. Asegúrate de inyectar los datos desde la medida DAX.', 'info');
+    // Show DAX instructions
+    addSystemMessage(`**Instrucciones para datos DAX:**\n\n1. En Power BI Desktop, crea una medida:\n\`\`\`dax\nDatos_JSON = CONCATENATEX(Tabla, "{""col"":""" & [Columna] & """}", ",")\n\`\`\`\n2. En el HTML content visual, usa:\n\`\`\`javascript\nwindow.POWERBI_DATA = JSON.parse('[' + pbi.getReportPages()[0].getData() + ']');\n\`\`\``);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// GESTIÓN DE TABLAS
+// ═══════════════════════════════════════════════════
+function addTable(table) {
+  STATE.tables.push(table);
+  renderTablesList();
+  updateTokenIndicator();
+  document.getElementById('btn-start-chat').disabled = STATE.tables.length === 0;
+  toast(`Tabla "${table.name}" cargada: ${table.rows.length} filas, ${table.columns.length} columnas`, 'success');
+}
+
+function removeTable(id) {
+  STATE.tables = STATE.tables.filter(t => t.id !== id);
+  renderTablesList();
+  updateTokenIndicator();
+  document.getElementById('btn-start-chat').disabled = STATE.tables.length === 0;
+}
+
+function toggleColumn(tableId, col) {
+  const table = STATE.tables.find(t => t.id === tableId);
+  if (!table) return;
+  if (table.excluded_cols.has(col)) table.excluded_cols.delete(col);
+  else table.excluded_cols.add(col);
+  renderTablesList();
+  updateTokenIndicator();
+}
+
+function renderTablesList() {
+  const container = document.getElementById('tables-list');
+  container.innerHTML = '';
+  STATE.tables.forEach(table => {
+    const included = table.columns.filter(c => !table.excluded_cols.has(c));
+    const preview = table.rows.slice(0, 3);
+    const card = document.createElement('div');
+    card.className = 'table-card';
+    card.innerHTML = `
+      <div class="table-card-header">
+        <div style="display:flex;align-items:center;gap:10px;flex:1">
+          <span style="font-size:18px">📋</span>
+          <input type="text" class="table-card-name-input" value="${escHtml(table.name)}"
+            onchange="renameTable(${table.id}, this.value)">
+        </div>
+        <div class="table-meta">
+          <span>📊 ${table.rows.length.toLocaleString()} filas</span>
+          <span>🗂 ${table.columns.length} cols</span>
+          <span style="color:var(--primario)">${included.length} incluidas</span>
+        </div>
+        <div class="table-actions">
+          <button class="btn-icon" onclick="toggleTablePreview(${table.id})" title="Toggle preview">👁</button>
+          <button class="btn-icon danger" onclick="removeTable(${table.id})" title="Eliminar">🗑</button>
+        </div>
+      </div>
+      <div id="preview-${table.id}" style="display:block">
+        <div style="padding:8px 16px 4px;font-size:11px;color:var(--texto-placeholder)">
+          Haz clic en los encabezados para incluir/excluir columnas del contexto
+        </div>
+        <div class="table-preview">
+          <table class="preview-table">
+            <thead><tr>
+              ${table.columns.map(col =>
+                `<th class="${table.excluded_cols.has(col) ? 'excluded' : 'included'}"
+                   onclick="toggleColumn(${table.id}, '${escHtml(col)}')"
+                   title="Click para ${table.excluded_cols.has(col) ? 'incluir' : 'excluir'}">${escHtml(col)}</th>`
+              ).join('')}
+            </tr></thead>
+            <tbody>
+              ${preview.map(row =>
+                `<tr>${table.columns.map(col =>
+                  `<td style="${table.excluded_cols.has(col) ? 'opacity:0.3' : ''}">${escHtml(String(row[col] ?? ''))}</td>`
+                ).join('')}</tr>`
+              ).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function toggleTablePreview(id) {
+  const el = document.getElementById(`preview-${id}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function renameTable(id, newName) {
+  const table = STATE.tables.find(t => t.id === id);
+  if (table) table.name = newName;
+}
+
+function updateTokenIndicator() {
+  const indicator = document.getElementById('token-indicator');
+  if (STATE.tables.length === 0) { indicator.style.display = 'none'; return; }
+  indicator.style.display = 'flex';
+  const ctx = buildRawContext();
+  const tokens = estimateTokens(ctx);
+  const limit = CONFIG.MAX_CONTEXT_TOKENS;
+  const pct = Math.min(100, (tokens / limit) * 100);
+  const fill = document.getElementById('token-bar-fill');
+  fill.style.width = pct + '%';
+  fill.className = 'token-bar-fill' + (pct > 90 ? ' danger' : pct > 70 ? ' warning' : '');
+  document.getElementById('token-count').textContent = `~${tokens.toLocaleString()} / ${limit.toLocaleString()} tokens`;
+}
+
+function estimateTokens(text) {
+  return Math.round(text.length / 4);
+}
+
+function reloadData() {
+  STATE.tables = [];
+  sessionStorage.removeItem('pbai_tables');
+  renderTablesList();
+  updateTokenIndicator();
+  document.getElementById('btn-start-chat').disabled = true;
+  toast('Datos eliminados. Carga nuevas tablas.', 'info');
+}
+
+// ═══════════════════════════════════════════════════
+// PRE-PROCESAMIENTO DE CONTEXTO
+// ═══════════════════════════════════════════════════
+function buildRawContext() {
+  return STATE.tables.map(table => {
+    const includedCols = table.columns.filter(c => !table.excluded_cols.has(c));
+    const rowsForContext = table.rows.slice(0, CONFIG.MAX_ROWS_PER_TABLE);
+    const header = includedCols.join('|');
+    const body = rowsForContext.map(r => includedCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
+    return `TABLE: ${table.name}\n${header}\n${body}`;
+  }).join('\n\n---\n\n');
+}
+
+function rebuildContext() {
+  if (!STATE.tables || STATE.tables.length === 0) { STATE.context = null; return; }
+  const summaries = STATE.tables.map(table => generateTableSummary(table));
+  const rawCtx = buildRawContext();
+  STATE.context = {
+    summaries,
+    raw: rawCtx,
+    tables: STATE.tables.map(t => ({
+      name: t.name,
+      columns: t.columns.filter(c => !t.excluded_cols.has(c)),
+      rowCount: t.rows.length,
+      types: detectColumnTypes(t),
+    })),
+    totalTokens: estimateTokens(rawCtx),
+    createdAt: Date.now(),
+  };
+}
+
+function generateTableSummary(table) {
+  const includedCols = table.columns.filter(c => !table.excluded_cols.has(c));
+  const types = detectColumnTypes(table);
+  const stats = {};
+
+  includedCols.forEach(col => {
+    const vals = table.rows.map(r => r[col]).filter(v => v !== '' && v != null);
+    if (types[col] === 'numeric') {
+      const nums = vals.map(Number).filter(n => !isNaN(n));
+      if (nums.length > 0) {
+        stats[col] = {
+          type: 'numeric',
+          min: Math.min(...nums),
+          max: Math.max(...nums),
+          avg: nums.reduce((a,b) => a+b, 0) / nums.length,
+          count: nums.length,
+        };
+      }
+    } else {
+      const unique = [...new Set(vals)];
+      stats[col] = {
+        type: 'categorical',
+        unique: unique.length,
+        top5: unique.slice(0, 5),
+        count: vals.length,
+      };
+    }
+  });
+
+  return {
+    name: table.name,
+    rowCount: table.rows.length,
+    columns: includedCols,
+    types,
+    stats,
+  };
+}
+
+function detectColumnTypes(table) {
+  const types = {};
+  const testRows = table.rows.slice(0, Math.min(50, table.rows.length));
+  table.columns.forEach(col => {
+    if (table.excluded_cols.has(col)) { types[col] = 'excluded'; return; }
+    const vals = testRows.map(r => r[col]).filter(v => v !== '' && v != null);
+    const numericCount = vals.filter(v => !isNaN(Number(v)) && String(v).trim() !== '').length;
+    types[col] = numericCount >= vals.length * 0.7 ? 'numeric' : 'categorical';
+  });
+  return types;
+}
+
+function compressContextForQuestion(question) {
+  if (!STATE.context || !CONFIG.COMPRESS_CONTEXT) return buildRawContext();
+
+  // Score tables and columns by relevance to question
+  const qWords = question.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+  const relevantParts = [];
+
+  STATE.tables.forEach(table => {
+    const includedCols = table.columns.filter(c => !table.excluded_cols.has(c));
+    const tableScore = scoreRelevance(table.name, qWords);
+
+    // Score columns
+    const scoredCols = includedCols.map(col => ({
+      col,
+      score: scoreRelevance(col, qWords) + tableScore * 0.5
+    })).sort((a, b) => b.score - a.score);
+
+    const topCols = scoredCols.slice(0, CONFIG.MAX_COLS_CONTEXT).map(x => x.col);
+    const rowLimit = Math.min(table.rows.length, CONFIG.MAX_ROWS_PER_TABLE);
+    const rows = table.rows.slice(0, rowLimit);
+
+    const header = topCols.join('|');
+    const body = rows.map(r => topCols.map(c => String(r[c] ?? '')).join('|')).join('\n');
+    relevantParts.push(`TABLE: ${table.name} (${table.rows.length} rows total, showing ${rowLimit})\n${header}\n${body}`);
+  });
+
+  // Also include summaries
+  const summaryText = STATE.context.summaries.map(s =>
+    `SUMMARY: ${s.name}: ${s.rowCount} rows, cols: ${s.columns.join(', ')}`
+  ).join('\n');
+
+  return summaryText + '\n\n' + relevantParts.join('\n\n---\n\n');
+}
+
+function scoreRelevance(text, queryWords) {
+  const t = (text || '').toLowerCase();
+  return queryWords.reduce((score, word) => score + (t.includes(word) ? 1 : 0), 0);
+}
+
+function startChat() {
+  // Pre-process context
+  rebuildContext();
+
+  // Persist if checkbox checked
+  if (document.getElementById('persist-data').checked) {
+    localStorage.setItem('pbai_tables_persist', JSON.stringify(
+      STATE.tables.map(t => ({...t, excluded_cols: [...t.excluded_cols]}))
+    ));
+  } else {
+    sessionStorage.setItem('pbai_tables', JSON.stringify(
+      STATE.tables.map(t => ({...t, excluded_cols: [...t.excluded_cols]}))
+    ));
+  }
+
+  showScreen('screen-chat');
+  renderSidebarTables();
+  renderWelcomeSuggestions();
+}
+
+// ═══════════════════════════════════════════════════
+// LLM CLIENT — STREAMING
+// ═══════════════════════════════════════════════════
+const SYSTEM_PROMPT = `Eres un experto analista de datos integrado en Power BI.
+Tienes acceso a tablas de datos del usuario. Responde en español.
+Sé conciso, preciso y útil. Usa markdown cuando sea útil.
+
+Para generar gráficas, incluye al final de tu respuesta un bloque JSON con este formato EXACTO:
+[CHART:{"tipo":"barras","titulo":"Título","datos":[{"label":"A","valor":100},{"label":"B","valor":80}]}]
+
+Tipos de gráfica disponibles: "barras", "lineas", "dona", "kpi"
+Para KPI: [CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500,"cambio":12.5},{"label":"Promedio","valor":75}]}]
+Para líneas: [CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie 1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
+
+IMPORTANTE: Solo incluye [CHART:...] cuando el usuario pida una gráfica o visualización explícita, o cuando sea la mejor forma de responder.
+Cuando presentes tablas de datos, usa formato markdown de tabla.
+Para tendencias, calcula y menciona la tasa de crecimiento.`;
+
+async function callLLM(messages) {
+  const key = getApiKey();
+  if (!key) throw new Error('No hay API Key guardada');
+
+  const cfg = LLM_CONFIG[STATE.llmModel];
+  if (!cfg) throw new Error('Modelo no configurado');
+
+  const headers = { 'Content-Type': 'application/json', ...cfg.authHeader(key) };
+  const body = cfg.buildBody(messages, key);
+  const endpoint = cfg.dynamicEndpoint ? cfg.endpoint(key) : cfg.endpoint;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
+
+  return response;
+}
+
+async function streamResponse(messages, onChunk, onDone) {
+  const response = await callLLM(messages);
+  const cfg = LLM_CONFIG[STATE.llmModel];
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const chunk = cfg.parseChunk(line.trim());
+      if (chunk) {
+        fullText += chunk;
+        onChunk(chunk, fullText);
+      }
+    }
+  }
+  // Process remaining buffer
+  if (buffer) {
+    const chunk = cfg.parseChunk(buffer.trim());
+    if (chunk) { fullText += chunk; onChunk(chunk, fullText); }
+  }
+  onDone(fullText);
+}
+
+// ═══════════════════════════════════════════════════
+// CHAT UI
+// ═══════════════════════════════════════════════════
+function buildConversationMessages(userQuestion) {
+  const contextText = compressContextForQuestion(userQuestion);
+  const systemContent = SYSTEM_PROMPT + '\n\nDATA CONTEXT:\n' + contextText;
+
+  const messages = [{ role: 'system', content: systemContent }];
+
+  // Add history (last N messages)
+  const history = STATE.messages.slice(-CONFIG.MAX_HISTORY);
+  history.forEach(m => {
+    if (m.role === 'user' || m.role === 'assistant') {
+      messages.push({ role: m.role, content: m.content });
+    }
+  });
+
+  // Add current question
+  messages.push({ role: 'user', content: userQuestion });
+  return messages;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const question = input.value.trim();
+  if (!question || STATE.isLoading) return;
+  input.value = '';
+  autoResizeTextarea(input);
+
+  // Hide welcome state
+  document.getElementById('chat-welcome-state').style.display = 'none';
+
+  // Check cache
+  const cacheKey = STATE.llmModel + '|' + question + '|' + (STATE.context?.createdAt || 0);
+  if (CONFIG.CACHE_ENABLED && STATE.responseCache.has(cacheKey)) {
+    addUserMessage(question);
+    const cached = STATE.responseCache.get(cacheKey);
+    addAgentMessage(cached, true);
+    return;
+  }
+
+  addUserMessage(question);
+  STATE.isLoading = true;
+  document.getElementById('btn-send').disabled = true;
+  setAvatarState('thinking');
+  updateHeaderStatus('Pensando...');
+
+  // Show typing indicator
+  const typingId = showTypingIndicator();
+
+  try {
+    const messages = buildConversationMessages(question);
+
+    if (CONFIG.STREAMING_ENABLED) {
+      removeTypingIndicator(typingId);
+      const agentMsgId = addAgentMessageStreaming();
+      setAvatarState('responding');
+      updateHeaderStatus('Respondiendo...');
+
+      let fullResponse = '';
+      await streamResponse(
+        messages,
+        (chunk, full) => {
+          fullResponse = full;
+          updateStreamingMessage(agentMsgId, full);
+        },
+        (full) => {
+          fullResponse = full;
+          finalizeStreamingMessage(agentMsgId, full);
+          if (CONFIG.CACHE_ENABLED) STATE.responseCache.set(cacheKey, full);
+          STATE.messages.push({ role: 'assistant', content: full });
+        }
+      );
+    } else {
+      // Non-streaming fallback
+      const cfg = LLM_CONFIG[STATE.llmModel];
+      const originalStream = cfg.buildBody;
+      const resp = await callLLM(messages);
+      const data = await resp.json();
+      let content = '';
+      if (data.content) content = data.content.map(b => b.text || '').join('');
+      else if (data.choices) content = data.choices[0]?.message?.content || '';
+      removeTypingIndicator(typingId);
+      addAgentMessage(content);
+      if (CONFIG.CACHE_ENABLED) STATE.responseCache.set(cacheKey, content);
+      STATE.messages.push({ role: 'assistant', content: content });
+    }
+
+    STATE.messages.push({ role: 'user', content: question });
+  } catch(e) {
+    removeTypingIndicator(typingId);
+    addAgentMessage(`❌ Error: ${e.message}\n\nVerifica tu API Key y conexión a internet.`);
+  }
+
+  STATE.isLoading = false;
+  document.getElementById('btn-send').disabled = false;
+  setAvatarState('idle');
+  updateHeaderStatus('En línea');
+}
+
+function addUserMessage(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap user';
+  wrap.innerHTML = `
+    <div class="msg-content">
+      <div class="msg-bubble">${escHtml(text)}</div>
+      <div class="msg-time">${getTime()}</div>
+    </div>
+    <div class="msg-avatar" style="width:32px;height:32px;background:var(--primario);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white;flex-shrink:0">👤</div>
+  `;
+  appendMessage(wrap);
+}
+
+function addAgentMessage(text, fromCache = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap agent';
+  const rendered = renderMessageContent(text);
+  wrap.innerHTML = `
+    <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
+    <div class="msg-content">
+      <div class="msg-bubble">${rendered}</div>
+      <div class="msg-time">${getTime()}${fromCache ? ' · 💾 caché' : ''}</div>
+      <div class="msg-actions">
+        <button class="btn-icon" onclick="copyMessage(this)" title="Copiar">📋</button>
+      </div>
+    </div>
+  `;
+  appendMessage(wrap);
+  // Render any charts
+  setTimeout(() => renderInlineCharts(wrap), 50);
+}
+
+let streamingMsgCounter = 0;
+function addAgentMessageStreaming() {
+  const id = 'msg-stream-' + (++streamingMsgCounter);
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap agent';
+  wrap.id = id;
+  wrap.innerHTML = `
+    <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'responding')}</div>
+    <div class="msg-content">
+      <div class="msg-bubble" id="${id}-bubble"></div>
+      <div class="msg-time">${getTime()}</div>
+    </div>
+  `;
+  appendMessage(wrap);
+  return id;
+}
+
+function updateStreamingMessage(id, text) {
+  const bubble = document.getElementById(id + '-bubble');
+  if (bubble) {
+    // Show raw text during streaming for performance
+    bubble.textContent = text;
+    scrollToBottom();
+  }
+}
+
+function finalizeStreamingMessage(id, text) {
+  const bubble = document.getElementById(id + '-bubble');
+  const wrap = document.getElementById(id);
+  if (bubble) {
+    bubble.innerHTML = renderMessageContent(text);
+    setTimeout(() => renderInlineCharts(wrap), 50);
+  }
+  if (wrap) {
+    const content = wrap.querySelector('.msg-content');
+    if (content) {
+      const actions = document.createElement('div');
+      actions.className = 'msg-actions';
+      actions.innerHTML = `<button class="btn-icon" onclick="copyMessage(this)" title="Copiar">📋</button>`;
+      content.appendChild(actions);
+    }
+  }
+}
+
+function addSystemMessage(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap agent';
+  wrap.innerHTML = `
+    <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
+    <div class="msg-content">
+      <div class="msg-bubble">${renderMessageContent(text)}</div>
+      <div class="msg-time">${getTime()} · sistema</div>
+    </div>
+  `;
+  appendMessage(wrap);
+}
+
+function showTypingIndicator() {
+  const id = 'typing-' + Date.now();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap agent';
+  wrap.id = id;
+  wrap.innerHTML = `
+    <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'thinking')}</div>
+    <div class="msg-content">
+      <div class="typing-indicator">
+        <div class="typing-dots">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <span style="font-size:11px;color:var(--texto-placeholder)">Analizando datos...</span>
+      </div>
+    </div>
+  `;
+  appendMessage(wrap);
+  return id;
+}
+
+function removeTypingIndicator(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function appendMessage(el) {
+  const container = document.getElementById('chat-messages');
+  container.appendChild(el);
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('chat-messages');
+  container.scrollTop = container.scrollHeight;
+}
+
+function getTime() {
+  return new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+}
+
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function insertHint(el) {
+  const hints = {
+    '📈 Tendencias': '¿Cuáles son las principales tendencias en los datos?',
+    '📊 Resumen total': 'Dame un resumen completo de los datos disponibles.',
+    '🔝 Top 10': '¿Cuáles son los 10 valores más altos?',
+    '📉 Variación %': 'Calcula la variación porcentual entre períodos.',
+    '🔍 Valor atípico': '¿Hay valores atípicos o anomalías en los datos?',
+  };
+  const input = document.getElementById('chat-input');
+  input.value = hints[el.textContent] || el.textContent;
+  input.focus();
+  autoResizeTextarea(input);
+}
+
+function copyMessage(btn) {
+  const bubble = btn.closest('.msg-content').querySelector('.msg-bubble');
+  navigator.clipboard.writeText(bubble.textContent).then(() => toast('Copiado', 'success'));
+}
+
+function clearChat() {
+  STATE.messages = [];
+  STATE.responseCache.clear();
+  const container = document.getElementById('chat-messages');
+  const welcomeState = document.getElementById('chat-welcome-state');
+  container.innerHTML = '';
+  container.appendChild(welcomeState);
+  welcomeState.style.display = '';
+  toast('Conversación limpiada', 'info');
+}
+
+function exportChat() {
+  const msgs = STATE.messages.map(m =>
+    `[${m.role.toUpperCase()}]: ${m.content}`
+  ).join('\n\n---\n\n');
+  const blob = new Blob([msgs], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `chat_agente_ia_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  toast('Chat exportado', 'success');
+}
+
+function updateHeaderStatus(text) {
+  document.getElementById('header-status-text').textContent = text;
+}
+
+function toggleSidebar() {
+  STATE.sidebarOpen = !STATE.sidebarOpen;
+  const sb = document.getElementById('chat-sidebar');
+  sb.classList.toggle('collapsed', !STATE.sidebarOpen);
+}
+
+// ═══════════════════════════════════════════════════
+// MARKDOWN RENDERER
+// ═══════════════════════════════════════════════════
+function renderMessageContent(text) {
+  // Extract and placeholder charts
+  const chartPlaceholders = [];
+  let processed = text.replace(/\[CHART:([\s\S]*?)\]/g, (match, json) => {
+    const idx = chartPlaceholders.length;
+    chartPlaceholders.push(json);
+    return `<div class="chart-placeholder" data-chart-idx="${idx}"></div>`;
+  });
+
+  // Markdown to HTML
+  processed = markdownToHTML(processed);
+
+  return processed;
+}
+
+function markdownToHTML(text) {
+  let html = escHtml(text);
+
+  // Unescape chart placeholders
+  html = html.replace(/&lt;div class=&quot;chart-placeholder&quot;[^>]+&gt;&lt;\/div&gt;/g, m =>
+    m.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')
+  );
+
+  // Code blocks
+  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) =>
+    `<pre><code>${code.replace(/&amp;/g,'&')}</code></pre>`
+  );
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold & italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+  // Tables
+  html = renderMarkdownTables(html);
+  // Unordered lists
+  html = html.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Blockquote
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // HR
+  html = html.replace(/^---$/gm, '<hr>');
+  // Paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[123]>)/g, '$1');
+  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<div)/g, '$1');
+  html = html.replace(/(<\/div>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote>)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+  html = html.replace(/\n/g, '<br>');
+
+  return html;
+}
+
+function renderMarkdownTables(html) {
+  return html.replace(/(\|.+\|\n)+/g, (match) => {
+    const rows = match.trim().split('\n');
+    if (rows.length < 2) return match;
+    const isAlignRow = (r) => /^\|[\s:\-|]+\|$/.test(r.replace(/\s/g,''));
+    let headerRow = null, bodyRows = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (i === 1 && isAlignRow(rows[i])) { headerRow = rows[0]; continue; }
+      if (headerRow && i === 1) continue;
+      bodyRows.push(rows[i]);
+    }
+    if (!headerRow) return match;
+
+    const parseCells = (row) => row.split('|').slice(1,-1).map(c => c.trim());
+    const headers = parseCells(headerRow);
+    const bodyHTML = bodyRows.map(r => {
+      const cells = parseCells(r);
+      return `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`;
+    }).join('');
+
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${bodyHTML}</tbody></table></div>`;
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// MOTOR DE GRÁFICAS — Canvas API puro
+// ═══════════════════════════════════════════════════
+function renderInlineCharts(container) {
+  const placeholders = container.querySelectorAll('.chart-placeholder');
+  const bubble = container.querySelector('.msg-bubble');
+  if (!bubble) return;
+
+  // Also scan for [CHART:...] in text
+  const chartMatches = [...(bubble.innerHTML.matchAll(/\[CHART:([\s\S]*?)\]/g) || [])];
+
+  placeholders.forEach((ph) => {
+    try {
+      const idxAttr = ph.getAttribute('data-chart-idx');
+      // This will be handled by the main text parsing
+    } catch {}
+  });
+
+  // Re-scan the finalized text for chart tags
+  const rawText = container.querySelector('.msg-bubble')?.textContent || '';
+  const chartRegex = /\[CHART:(\{[\s\S]*?\})\]/g;
+  let m;
+  while ((m = chartRegex.exec(rawText)) !== null) {
+    try {
+      const config = JSON.parse(m[1]);
+      injectChart(container, config);
+    } catch {}
+  }
+}
+
+function injectChart(container, config) {
+  const chartDiv = document.createElement('div');
+  chartDiv.className = 'chart-container';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'chart-title';
+  titleEl.textContent = config.titulo || 'Gráfica';
+  chartDiv.appendChild(titleEl);
+
+  const actions = document.createElement('div');
+  actions.className = 'chart-actions';
+  actions.innerHTML = `
+    <button class="btn-icon" title="Expandir" onclick="expandChart(this.closest('.chart-container'), '${escHtml(config.titulo || 'Gráfica')}')">⛶</button>
+    <button class="btn-icon" title="Descargar PNG" onclick="downloadChart(this.closest('.chart-container'))">💾</button>
+  `;
+  chartDiv.appendChild(actions);
+
+  let rendered = false;
+
+  switch (config.tipo) {
+    case 'barras':   renderBarChart(chartDiv, config); rendered = true; break;
+    case 'lineas':   renderLineChart(chartDiv, config); rendered = true; break;
+    case 'dona':
+    case 'torta':    renderDonutChart(chartDiv, config); rendered = true; break;
+    case 'kpi':      renderKPICards(chartDiv, config); rendered = true; break;
+    default:
+      // Try to guess
+      if (config.datos && Array.isArray(config.datos)) {
+        if (config.datos[0]?.valor !== undefined) renderBarChart(chartDiv, config);
+        else renderBarChart(chartDiv, config);
+        rendered = true;
+      }
+  }
+
+  if (rendered) {
+    const bubble = container.querySelector('.msg-bubble');
+    if (bubble) {
+      // Remove [CHART:...] text from bubble
+      bubble.innerHTML = bubble.innerHTML.replace(/\[CHART:[\s\S]*?\]/g, '');
+      bubble.parentNode.insertBefore(chartDiv, bubble.nextSibling);
+    }
+  }
+}
+
+function getChartColors(n) {
+  const palette = TEMA_ACTUAL.grafica_paleta || ['#0F62FE','#08BDBA','#BE95FF','#FFB784','#42BE65','#EE5396'];
+  const result = [];
+  for (let i = 0; i < n; i++) result.push(palette[i % palette.length]);
+  return result;
+}
+
+function renderBarChart(container, config) {
+  const datos = config.datos || [];
+  if (!datos.length) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'chart-canvas';
+  const W = 500, H = 280;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = '100%';
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const pad = { top: 20, right: 20, bottom: 60, left: 55 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  const values = datos.map(d => Number(d.valor) || 0);
+  const labels = datos.map(d => String(d.label));
+  const maxVal = Math.max(...values, 0);
+  const minVal = Math.min(...values, 0);
+  const range = maxVal - minVal || 1;
+  const colors = getChartColors(datos.length);
+
+  // Background
+  ctx.fillStyle = getComputedColor('--fondo-app');
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = getComputedColor('--borde');
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + (cH / 5) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    const val = maxVal - (range / 5) * i;
+    ctx.fillStyle = getComputedColor('--texto-secundario');
+    ctx.font = '10px var(--fuente-principal, sans-serif)';
+    ctx.textAlign = 'right';
+    ctx.fillText(formatNum(val), pad.left - 5, y + 4);
+  }
+
+  const barW = (cW / datos.length) * 0.7;
+  const gap = (cW / datos.length) * 0.3;
+
+  datos.forEach((d, i) => {
+    const val = Number(d.valor) || 0;
+    const barH = Math.abs(val - minVal) / range * cH;
+    const x = pad.left + (cW / datos.length) * i + gap / 2;
+    const y = pad.top + cH - barH + (minVal < 0 ? 0 : 0);
+
+    // Bar with gradient
+    const grad = ctx.createLinearGradient(0, y, 0, y + barH);
+    grad.addColorStop(0, colors[i % colors.length]);
+    grad.addColorStop(1, hexToRgba(colors[i % colors.length], 0.6));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, barW, barH, [4, 4, 0, 0]) : ctx.rect(x, y, barW, barH);
+    ctx.fill();
+
+    // Value label
+    ctx.fillStyle = getComputedColor('--texto-principal');
+    ctx.font = 'bold 10px var(--fuente-principal, sans-serif)';
+    ctx.textAlign = 'center';
+    ctx.fillText(formatNum(val), x + barW / 2, y - 4);
+
+    // X label
+    ctx.fillStyle = getComputedColor('--texto-secundario');
+    ctx.font = '10px var(--fuente-principal, sans-serif)';
+    const lbl = labels[i].length > 12 ? labels[i].slice(0,10) + '…' : labels[i];
+    ctx.save();
+    ctx.translate(x + barW / 2, pad.top + cH + 15);
+    ctx.rotate(labels[i].length > 8 ? -Math.PI / 6 : 0);
+    ctx.fillText(lbl, 0, 0);
+    ctx.restore();
+  });
+
+  // Axes
+  ctx.strokeStyle = getComputedColor('--borde-input');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + cH);
+  ctx.lineTo(pad.left + cW, pad.top + cH); ctx.stroke();
+
+  addChartInteractivity(canvas, datos, labels, values, colors, 'barras', pad, cW, cH);
+}
+
+function renderLineChart(container, config) {
+  const series = config.series || (config.datos ? [{ nombre: config.titulo || 'Serie', datos: config.datos.map((d,i) => ({x: String(d.label || i), y: Number(d.valor || 0)})) }] : []);
+  if (!series.length) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'chart-canvas';
+  const W = 500, H = 260;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = '100%';
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const pad = { top: 20, right: 20, bottom: 50, left: 55 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+  const colors = getChartColors(series.length);
+
+  const allValues = series.flatMap(s => s.datos.map(d => Number(d.y) || 0));
+  const maxVal = Math.max(...allValues);
+  const minVal = Math.min(...allValues);
+  const range = maxVal - minVal || 1;
+  const labels = series[0].datos.map(d => String(d.x));
+
+  ctx.fillStyle = getComputedColor('--fondo-app');
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = getComputedColor('--borde');
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (cH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    const val = maxVal - (range / 4) * i;
+    ctx.fillStyle = getComputedColor('--texto-secundario');
+    ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(formatNum(val), pad.left - 5, y + 4);
+  }
+
+  series.forEach((serie, si) => {
+    const pts = serie.datos.map((d, i) => ({
+      x: pad.left + (cW / (serie.datos.length - 1 || 1)) * i,
+      y: pad.top + (1 - (Number(d.y) - minVal) / range) * cH,
+    }));
+
+    // Area fill
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.top + cH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length-1].x, pad.top + cH);
+    ctx.closePath();
+    ctx.fillStyle = hexToRgba(colors[si], 0.1);
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = colors[si];
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+
+    // Points
+    pts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = colors[si];
+      ctx.fill();
+      ctx.strokeStyle = getComputedColor('--fondo-app');
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+  });
+
+  // X Labels
+  ctx.fillStyle = getComputedColor('--texto-secundario');
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(labels.length / 8));
+  labels.forEach((lbl, i) => {
+    if (i % step !== 0 && i !== labels.length-1) return;
+    const x = pad.left + (cW / (labels.length - 1 || 1)) * i;
+    ctx.fillText(lbl.length > 10 ? lbl.slice(0,8)+'…' : lbl, x, pad.top + cH + 20);
+  });
+
+  // Axes
+  ctx.strokeStyle = getComputedColor('--borde-input');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + cH);
+  ctx.lineTo(pad.left + cW, pad.top + cH); ctx.stroke();
+
+  // Legend
+  if (series.length > 1) {
+    series.forEach((s, i) => {
+      const lx = pad.left + i * 120;
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(lx, H - 18, 10, 10);
+      ctx.fillStyle = getComputedColor('--texto-secundario');
+      ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(s.nombre, lx + 13, H - 10);
+    });
+  }
+}
+
+function renderDonutChart(container, config) {
+  const datos = config.datos || [];
+  if (!datos.length) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'chart-canvas';
+  const W = 400, H = 250;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = '100%';
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const colors = getChartColors(datos.length);
+  const values = datos.map(d => Math.abs(Number(d.valor) || 0));
+  const total = values.reduce((a,b) => a+b, 0) || 1;
+
+  ctx.fillStyle = getComputedColor('--fondo-app');
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = 130, cy = H / 2, radius = 90, inner = 50;
+  let startAngle = -Math.PI / 2;
+
+  datos.forEach((d, i) => {
+    const slice = (values[i] / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, startAngle, startAngle + slice);
+    ctx.closePath();
+    ctx.fillStyle = colors[i];
+    ctx.fill();
+    ctx.strokeStyle = getComputedColor('--fondo-app');
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Slice label
+    const midAngle = startAngle + slice / 2;
+    const lx = cx + Math.cos(midAngle) * (inner + (radius - inner) * 0.6);
+    const ly = cy + Math.sin(midAngle) * (inner + (radius - inner) * 0.6);
+    if (slice > 0.3) {
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(((values[i]/total)*100).toFixed(1) + '%', lx, ly + 4);
+    }
+
+    startAngle += slice;
+  });
+
+  // Inner circle (donut hole)
+  ctx.beginPath();
+  ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+  ctx.fillStyle = getComputedColor('--fondo-app');
+  ctx.fill();
+
+  // Center text
+  ctx.fillStyle = getComputedColor('--texto-principal');
+  ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(formatNum(total), cx, cy + 4);
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = getComputedColor('--texto-secundario');
+  ctx.fillText('Total', cx, cy + 17);
+
+  // Legend
+  const legendX = 270;
+  datos.forEach((d, i) => {
+    const y = 30 + i * 22;
+    if (y > H - 10) return;
+    ctx.fillStyle = colors[i];
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(legendX, y, 12, 12, 2) : ctx.fillRect(legendX, y, 12, 12);
+    ctx.fill();
+    ctx.fillStyle = getComputedColor('--texto-principal');
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    const label = String(d.label).length > 14 ? String(d.label).slice(0,12) + '…' : String(d.label);
+    ctx.fillText(label, legendX + 16, y + 10);
+    ctx.fillStyle = getComputedColor('--texto-secundario');
+    ctx.fillText(((values[i]/total)*100).toFixed(1) + '%', legendX + 110, y + 10);
+  });
+}
+
+function renderKPICards(container, config) {
+  const datos = config.datos || [];
+  const grid = document.createElement('div');
+  grid.className = 'kpi-grid';
+
+  datos.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'kpi-card';
+    const val = Number(d.valor) || 0;
+    const cambio = d.cambio !== undefined ? Number(d.cambio) : null;
+    card.innerHTML = `
+      <div class="kpi-value">${formatNum(val)}</div>
+      <div class="kpi-label">${escHtml(String(d.label))}</div>
+      ${cambio !== null ? `<div class="kpi-change ${cambio >= 0 ? 'positive' : 'negative'}">${cambio >= 0 ? '▲' : '▼'} ${Math.abs(cambio).toFixed(1)}%</div>` : ''}
+    `;
+    grid.appendChild(card);
+  });
+
+  container.appendChild(grid);
+}
+
+function addChartInteractivity(canvas, datos, labels, values, colors, type, pad, cW, cH) {
+  const tooltip = document.getElementById('chart-tooltip');
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const barW = (cW / datos.length) * 0.7;
+    const gap = (cW / datos.length) * 0.3;
+
+    let found = false;
+    datos.forEach((d, i) => {
+      const x = pad.left + (cW / datos.length) * i + gap / 2;
+      if (mx >= x && mx <= x + barW) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY - 30) + 'px';
+        tooltip.innerHTML = `<strong>${escHtml(String(d.label))}</strong><br>${formatNum(values[i])}`;
+        found = true;
+      }
+    });
+    if (!found) { tooltip.style.display = 'none'; }
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+}
+
+function expandChart(chartContainer, title) {
+  const canvas = chartContainer.querySelector('canvas');
+  const kpiGrid = chartContainer.querySelector('.kpi-grid');
+  const modalBody = document.getElementById('modal-chart-body');
+  const modalTitle = document.getElementById('modal-chart-title');
+  modalTitle.textContent = title;
+  modalBody.innerHTML = '';
+
+  if (canvas) {
+    const newCanvas = document.createElement('canvas');
+    newCanvas.width = 800; newCanvas.height = 450;
+    newCanvas.style.width = '100%';
+    const ctx2 = newCanvas.getContext('2d');
+    ctx2.drawImage(canvas, 0, 0, 800, 450);
+    modalBody.appendChild(newCanvas);
+    STATE.expandedChartCanvas = newCanvas;
+  } else if (kpiGrid) {
+    modalBody.appendChild(kpiGrid.cloneNode(true));
+  }
+  openModal('modal-chart');
+}
+
+function downloadChart(chartContainer) {
+  const canvas = chartContainer.querySelector('canvas');
+  if (!canvas) { toast('No hay gráfica para descargar', 'error'); return; }
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `grafica_${Date.now()}.png`;
+  a.click();
+  toast('Gráfica descargada', 'success');
+}
+
+function downloadExpandedChart() {
+  if (!STATE.expandedChartCanvas) return;
+  const a = document.createElement('a');
+  a.href = STATE.expandedChartCanvas.toDataURL('image/png');
+  a.download = `grafica_expandida_${Date.now()}.png`;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════
+// ANÁLISIS DE TENDENCIAS
+// ═══════════════════════════════════════════════════
+function calcLinearRegression(xs, ys) {
+  const n = xs.length;
+  const sumX = xs.reduce((a,b) => a+b, 0);
+  const sumY = ys.reduce((a,b) => a+b, 0);
+  const sumXY = xs.reduce((a,x,i) => a + x * ys[i], 0);
+  const sumX2 = xs.reduce((a,x) => a + x*x, 0);
+  const m = (n*sumXY - sumX*sumY) / (n*sumX2 - sumX*sumX || 1);
+  const b = (sumY - m*sumX) / n;
+  return { slope: m, intercept: b, predict: (x) => m*x + b };
+}
+
+function calcMovingAverage(data, period) {
+  return data.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = data.slice(i - period + 1, i + 1);
+    return slice.reduce((a,b) => a+b, 0) / period;
+  });
+}
+
+function detectOutliers(data) {
+  const sorted = [...data].sort((a,b) => a-b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  return data.map((v, i) => ({ value: v, index: i, isOutlier: v < q1 - 1.5*iqr || v > q3 + 1.5*iqr }));
+}
+
+// ═══════════════════════════════════════════════════
+// SIDEBAR & SUGGESTIONS
+// ═══════════════════════════════════════════════════
+function renderSidebarTables() {
+  const container = document.getElementById('sidebar-tables-list');
+  if (!container) return;
+  container.innerHTML = STATE.tables.map(t =>
+    `<div class="sidebar-item">
+      <span class="sidebar-item-icon">📋</span>
+      <span class="sidebar-item-text" title="${escHtml(t.name)}">${escHtml(t.name)} <span style="color:var(--texto-placeholder)">(${t.rows.length})</span></span>
+    </div>`
+  ).join('');
+}
+
+const SUGGESTIONS = [
+  { icon: '📊', text: 'Muéstrame un resumen de todos los datos', hint: 'Dame un resumen estadístico de todas las tablas cargadas.' },
+  { icon: '📈', text: 'Analiza las tendencias principales', hint: 'Analiza las tendencias y muestra una gráfica de líneas.' },
+  { icon: '🔝', text: 'Top 10 valores más altos', hint: 'Muéstrame los 10 valores más altos en formato de barras.' },
+  { icon: '🔍', text: 'Detecta valores atípicos', hint: '¿Hay valores atípicos o anomalías en los datos?' },
+  { icon: '💰', text: 'Distribución porcentual', hint: 'Muestra la distribución porcentual en una gráfica de dona.' },
+];
+
+function loadWelcomeSuggestions() {
+  // These are static on the welcome screen
+}
+
+function renderWelcomeSuggestions() {
+  const container = document.getElementById('welcome-suggestions-chat');
+  if (!container) return;
+  container.innerHTML = SUGGESTIONS.slice(0, 4).map(s =>
+    `<div class="suggestion-item" onclick="useSuggestion('${escHtml(s.hint)}')">
+      <span class="suggestion-icon">${s.icon}</span> ${escHtml(s.text)}
+    </div>`
+  ).join('');
+
+  const sidebarContainer = document.getElementById('sidebar-suggestions');
+  if (sidebarContainer) {
+    sidebarContainer.innerHTML = SUGGESTIONS.map(s =>
+      `<div class="sidebar-item" onclick="useSuggestion('${escHtml(s.hint)}')">
+        <span class="sidebar-item-icon">${s.icon}</span>
+        <span class="sidebar-item-text">${escHtml(s.text)}</span>
+      </div>`
+    ).join('');
+  }
+}
+
+function useSuggestion(text) {
+  document.getElementById('chat-input').value = text;
+  autoResizeTextarea(document.getElementById('chat-input'));
+  sendMessage();
+}
+
+// ═══════════════════════════════════════════════════
+// CONFIGURACIÓN / SETTINGS
+// ═══════════════════════════════════════════════════
+function initThemeGrid() {
+  const grid = document.getElementById('theme-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.entries(TEMAS_PREDEFINIDOS).map(([key, tema]) =>
+    `<div class="theme-card ${key === STATE.temaActivoKey ? 'active' : ''}" onclick="selectTheme('${key}')">
+      <div class="theme-swatch">
+        ${(tema.swatches || [tema.primario, tema.fondo_app, tema.color_exito]).map(c =>
+          `<div class="theme-dot" style="background:${c}"></div>`
+        ).join('')}
+      </div>
+      <div class="theme-name">${tema.nombre}</div>
+    </div>`
+  ).join('');
+}
+
+function selectTheme(key) {
+  if (!TEMAS_PREDEFINIDOS[key]) return;
+  STATE.temaActivoKey = key;
+  applyTheme(TEMAS_PREDEFINIDOS[key]);
+  localStorage.setItem('pbai_theme', key);
+  initThemeGrid();
+  toast(`Tema "${TEMAS_PREDEFINIDOS[key].nombre}" aplicado`, 'success');
+}
+
+function changeLLM(model) {
+  STATE.llmModel = model;
+  document.getElementById('llm-select').value = model;
+  document.getElementById('settings-llm').value = model;
+  // Update saved model
+  const enc = localStorage.getItem('pbai_k');
+  if (enc) localStorage.setItem('pbai_m', model);
+  toast(`Modelo cambiado a ${LLM_CONFIG[model]?.label || model}`, 'success');
+}
+
+function showSettings() {
+  // Update settings UI
+  document.getElementById('settings-llm').value = STATE.llmModel;
+  const enc = localStorage.getItem('pbai_k');
+  const suffix = enc ? deobfuscate(enc).slice(-4) : '----';
+  document.getElementById('settings-key-display').textContent = `••••••••${suffix}`;
+  document.getElementById('toggle-cache').checked = CONFIG.CACHE_ENABLED;
+  document.getElementById('toggle-streaming').checked = CONFIG.STREAMING_ENABLED;
+  document.getElementById('toggle-compress').checked = CONFIG.COMPRESS_CONTEXT;
+  document.getElementById('temperature-slider').value = CONFIG.TEMPERATURE;
+  document.getElementById('temp-val').textContent = CONFIG.TEMPERATURE;
+  document.getElementById('toggle-cache').onchange = (e) => { CONFIG.CACHE_ENABLED = e.target.checked; };
+  document.getElementById('toggle-streaming').onchange = (e) => { CONFIG.STREAMING_ENABLED = e.target.checked; };
+  document.getElementById('toggle-compress').onchange = (e) => { CONFIG.COMPRESS_CONTEXT = e.target.checked; };
+  document.getElementById('temperature-slider').oninput = (e) => {
+    CONFIG.TEMPERATURE = parseFloat(e.target.value);
+    document.getElementById('temp-val').textContent = e.target.value;
+  };
+  initThemeGrid();
+  openModal('modal-settings');
+}
+
+// ═══════════════════════════════════════════════════
+// MODALES
+// ═══════════════════════════════════════════════════
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', (e) => {
+    if (e.target === m) m.classList.remove('open');
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-msg' + (type ? ' ' + type : '');
+}
+
+function toast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+  toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${escHtml(msg)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'toastOut 0.3s ease both';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function formatNum(n) {
+  const num = Number(n);
+  if (isNaN(num)) return String(n);
+  if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+  if (Number.isInteger(num)) return num.toLocaleString('es');
+  return num.toFixed(2).toLocaleString('es');
+}
+
+function getComputedColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#888';
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ═══════════════════════════════════════════════════
+// POWER BI INTEGRATION — Recibir datos via postMessage
+// ═══════════════════════════════════════════════════
+window.addEventListener('message', (event) => {
+  if (!event.data) return;
+  try {
+    const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (msg.type === 'pbai_data') {
+      const tableData = msg.data;
+      if (Array.isArray(tableData) && tableData.length > 0) {
+        const table = {
+          name: msg.tableName || 'Datos_PowerBI',
+          columns: Object.keys(tableData[0]),
+          rows: tableData,
+          excluded_cols: new Set(),
+          id: Date.now(),
+        };
+        STATE.tables = [table];
+        rebuildContext();
+        toast(`Power BI: ${tableData.length} filas recibidas`, 'success');
+      }
+    }
+  } catch {}
+});
+
+// ═══════════════════════════════════════════════════
+// INICIALIZACIÓN
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', initApp);
+
+</script>
+</body>
+</html>
