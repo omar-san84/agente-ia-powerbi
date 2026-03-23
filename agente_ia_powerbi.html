@@ -2671,8 +2671,7 @@ function addUserMessage(text) {
 function addAgentMessage(text, fromCache = false) {
   const wrap = document.createElement('div');
   wrap.className = 'msg-wrap agent';
-  const msgId = 'agent_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-  const rendered = renderMessageContent(text, msgId);
+  const rendered = renderMessageContent(text);
   wrap.innerHTML = `
     <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
     <div class="msg-content">
@@ -2718,16 +2717,14 @@ function finalizeStreamingMessage(id, text) {
   const bubble = document.getElementById(id + '-bubble');
   const wrap = document.getElementById(id);
   if (bubble) {
-    // Use id as msgId so CHART_STORE can find it
-    const msgId = 'stream_' + id;
-    bubble.innerHTML = renderMessageContent(text, msgId);
-    // Give DOM time to update before rendering charts
-    setTimeout(() => renderInlineCharts(wrap), 100);
+    // renderMessageContent auto-assigns a fresh numeric key — no msgId needed
+    bubble.innerHTML = renderMessageContent(text);
+    // Render charts after DOM settles
+    setTimeout(() => renderInlineCharts(wrap), 120);
   }
   if (wrap) {
     const msgContent = wrap.querySelector('.msg-content');
     if (msgContent) {
-      // Remove old actions if any
       const oldActions = msgContent.querySelector('.msg-actions');
       if (oldActions) oldActions.remove();
       const actions = document.createElement('div');
@@ -2741,11 +2738,10 @@ function finalizeStreamingMessage(id, text) {
 function addSystemMessage(text) {
   const wrap = document.createElement('div');
   wrap.className = 'msg-wrap agent';
-  const msgId = 'sys_' + Date.now();
   wrap.innerHTML = `
     <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
     <div class="msg-content">
-      <div class="msg-bubble">${renderMessageContent(text, msgId)}</div>
+      <div class="msg-bubble">${renderMessageContent(text)}</div>
       <div class="msg-time">${getTime()} · sistema</div>
     </div>
   `;
@@ -2862,49 +2858,52 @@ function toggleSidebar() {
 // ═══════════════════════════════════════════════════
 // MARKDOWN RENDERER
 // ═══════════════════════════════════════════════════
-// Module-level chart store: msgId -> [chartConfig, ...]
-const CHART_STORE = new Map();
-let _chartMsgCounter = 0;
+// ── CHART PIPELINE ──────────────────────────────────────────────────
+// Uses purely numeric keys: __CHART_5_2__ = msg #5, chart #2
+// No hyphens, no complex strings → survives escHtml() perfectly
+const CHART_STORE = new Map();   // num -> [config, ...]
+let _chartMsgNum = 0;            // increments per message
 
-function renderMessageContent(text, msgId) {
-  // Generate a unique message ID if not provided
-  if (!msgId) msgId = 'msg_' + (++_chartMsgCounter) + '_' + Date.now();
-
-  // Extract [CHART:...] blocks BEFORE any HTML escaping
+function renderMessageContent(text, _ignored) {
+  // Always use a fresh numeric key — ignore the string msgId completely
+  const msgNum = ++_chartMsgNum;
   const charts = [];
-  const chartUniqueId = msgId;
 
-  const cleaned = text.replace(/\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g, (match, jsonStr) => {
-    const idx = charts.length;
+  // Extract [CHART:{...}] BEFORE any escaping
+  // 3-level brace-balanced regex: handles barras, dona, kpi AND lineas (series.datos)
+  const CHART_RE = /\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g;
+
+  const cleaned = text.replace(CHART_RE, (match, jsonStr) => {
+    const chartIdx = charts.length;
+    let config = null;
     try {
-      const config = JSON.parse(jsonStr.trim());
-      charts.push(config);
+      config = JSON.parse(jsonStr.trim());
     } catch(e) {
-      // Try to recover malformed JSON
       try {
+        // Attempt recovery: fix unquoted keys, single quotes
         const fixed = jsonStr.trim()
-          .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // unquoted keys
-          .replace(/'/g, '"');                          // single to double quotes
-        charts.push(JSON.parse(fixed));
+          .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+          .replace(/'/g, '"');
+        config = JSON.parse(fixed);
       } catch(e2) {
-        charts.push({ _raw: jsonStr, _error: e.message });
+        config = { _error: e.message, _raw: jsonStr.slice(0, 200) };
       }
     }
-    // Leave a clean placeholder that survives HTML escaping
-    return `__CHART_${chartUniqueId}_${idx}__`;
+    charts.push(config);
+    // Pure numeric placeholder — NEVER fails escHtml or any regex
+    return `CHARTPLACEHOLDER${msgNum}X${chartIdx}END`;
   });
 
-  // Store charts for later rendering
   if (charts.length > 0) {
-    CHART_STORE.set(chartUniqueId, charts);
+    CHART_STORE.set(msgNum, charts);
   }
 
-  // Now convert remaining text to HTML
+  // Convert markdown to HTML (placeholder is pure alphanum, survives safely)
   let html = markdownToHTML(cleaned);
 
-  // Replace placeholders with render-trigger divs (after HTML processing)
-  html = html.replace(/__CHART_([^_]+(?:_[^_]+)*)_(\d+)__/g, (match, cid, idx) => {
-    return `<div class="chart-render-target" data-chart-id="${cid}" data-chart-idx="${idx}"></div>`;
+  // Replace placeholders with render targets
+  html = html.replace(/CHARTPLACEHOLDER(\d+)X(\d+)END/g, (m, num, idx) => {
+    return `<span class="chart-render-target" data-chart-num="${num}" data-chart-idx="${idx}"></span>`;
   });
 
   return html;
@@ -2913,9 +2912,9 @@ function renderMessageContent(text, msgId) {
 function markdownToHTML(text) {
   let html = escHtml(text);
 
-  // Restore __CHART_xxx__ placeholders that were HTML-escaped
-  // These are safe alphanumeric tokens that survive escaping
-  html = html.replace(/(__CHART_[A-Za-z0-9_]+__)/g, '$1');
+  // Restore CHARTPLACEHOLDER tokens (pure alphanum, never needs unescaping)
+  // They survive escHtml() unchanged — this line is a no-op safety net
+  html = html.replace(/(CHARTPLACEHOLDER\d+X\d+END)/g, '$1');
 
   // Code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) =>
@@ -2994,16 +2993,19 @@ function renderInlineCharts(container) {
   const bubble = container.querySelector('.msg-bubble');
   if (!bubble) return;
 
-  // Method 1: Render from CHART_STORE using data-chart-id targets
+  // Method 1: Render from CHART_STORE using numeric data-chart-num targets
   const targets = bubble.querySelectorAll('.chart-render-target');
   targets.forEach(target => {
-    const chartId = target.getAttribute('data-chart-id');
+    const chartNum = parseInt(target.getAttribute('data-chart-num') || '0');
     const chartIdx = parseInt(target.getAttribute('data-chart-idx') || '0');
-    const charts = CHART_STORE.get(chartId);
+    const charts = CHART_STORE.get(chartNum);
     if (charts && charts[chartIdx]) {
       const config = charts[chartIdx];
-      if (config._error) {
-        target.innerHTML = `<div style="color:var(--color-error);font-size:12px;padding:8px">⚠️ JSON de gráfica inválido: ${config._error}</div>`;
+      if (config && config._error) {
+        const errDiv = document.createElement('div');
+        errDiv.style.cssText = 'color:var(--color-advertencia);font-size:12px;padding:8px;border:1px solid var(--borde);border-radius:6px;margin:4px 0';
+        errDiv.textContent = '⚠️ No se pudo parsear la gráfica: ' + config._error;
+        target.replaceWith(errDiv);
         return;
       }
       const chartDiv = buildChartElement(config);
@@ -3013,26 +3015,40 @@ function renderInlineCharts(container) {
     }
   });
 
-  // Method 2: Fallback — scan raw textContent for any [CHART:...] that slipped through
+  // Method 2: Fallback — scan innerHTML for escaped CHARTPLACEHOLDER tokens not yet rendered
+  const rawHTML = bubble.innerHTML || '';
+  if (rawHTML.includes('CHARTPLACEHOLDER')) {
+    bubble.innerHTML = bubble.innerHTML.replace(/CHARTPLACEHOLDER(\d+)X(\d+)END/g, (m, num, idx) => {
+      return `<span class="chart-render-target" data-chart-num="${num}" data-chart-idx="${idx}"></span>`;
+    });
+    // Re-query and render new targets
+    bubble.querySelectorAll('.chart-render-target').forEach(target => {
+      const chartNum = parseInt(target.getAttribute('data-chart-num') || '0');
+      const chartIdx = parseInt(target.getAttribute('data-chart-idx') || '0');
+      const charts = CHART_STORE.get(chartNum);
+      if (charts && charts[chartIdx]) {
+        const chartDiv = buildChartElement(charts[chartIdx]);
+        if (chartDiv) target.replaceWith(chartDiv);
+      }
+    });
+  }
+
+  // Method 3: Scan raw textContent for [CHART:...] that completely slipped through
   const rawText = bubble.textContent || '';
   if (rawText.includes('[CHART:')) {
-    const chartRegex = /\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g;
+    const CHART_RE = /\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g;
     let m;
-    while ((m = chartRegex.exec(rawText)) !== null) {
-      try {
-        const config = JSON.parse(m[1]);
+    const chartsFound = [];
+    while ((m = CHART_RE.exec(rawText)) !== null) {
+      try { chartsFound.push(JSON.parse(m[1])); } catch(e) {}
+    }
+    if (chartsFound.length > 0) {
+      // Strip [CHART:...] text from bubble
+      bubble.innerHTML = bubble.innerHTML.replace(/\[CHART:[\s\S]*?\]/g, '');
+      chartsFound.forEach(config => {
         const chartDiv = buildChartElement(config);
-        if (chartDiv) {
-          // Remove the [CHART:...] text from bubble and append chart
-          bubble.innerHTML = bubble.innerHTML.replace(
-            /\[CHART:[\s\S]*?\]/,
-            ''
-          );
-          bubble.parentNode.insertBefore(chartDiv, bubble.nextSibling);
-        }
-      } catch(e) {
-        console.warn('Chart parse error:', e.message);
-      }
+        if (chartDiv) bubble.parentNode.insertBefore(chartDiv, bubble.nextSibling);
+      });
     }
   }
 }
