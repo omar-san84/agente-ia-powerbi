@@ -2465,17 +2465,19 @@ GRÁFICAS — INSTRUCCIONES CRÍTICAS:
 Cuando el usuario pida una gráfica, DEBES incluir el bloque [CHART:...] al FINAL de tu respuesta.
 El formato debe ser EXACTAMENTE así, sin espacios extra ni saltos de línea dentro del JSON:
 
-Para barras: [CHART:{"tipo":"barras","titulo":"Mi Titulo","datos":[{"label":"A","valor":100},{"label":"B","valor":80}]}]
-Para líneas: [CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
-Para dona/torta: [CHART:{"tipo":"dona","titulo":"Distribución","datos":[{"label":"Cat A","valor":60},{"label":"Cat B","valor":40}]}]
-Para KPIs: [CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500000,"cambio":12.5},{"label":"Promedio","valor":750}]}]
+Para barras:  [CHART:{"tipo":"barras","titulo":"Ventas por Categoria","datos":[{"label":"A","valor":100},{"label":"B","valor":80},{"label":"C","valor":60}]}]
+Para lineas:  [CHART:{"tipo":"lineas","titulo":"Tendencia Mensual","series":[{"nombre":"Ventas","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120},{"x":"Mar","y":90}]}]}]
+Para dona:    [CHART:{"tipo":"dona","titulo":"Distribucion","datos":[{"label":"Categoria A","valor":60},{"label":"Categoria B","valor":40}]}]
+Para KPIs:    [CHART:{"tipo":"kpi","datos":[{"label":"Total Registros","valor":224,"cambio":5.2},{"label":"Promedio","valor":75}]}]
 
 REGLAS ESTRICTAS para el JSON de gráficas:
 - USA SIEMPRE comillas dobles (") nunca simples (')
-- El JSON debe estar en UNA SOLA LÍNEA, sin saltos de línea dentro
 - Los números deben ser numéricos, no strings: "valor":100 (no "valor":"100")
-- El bloque completo va entre corchetes: [CHART:{...}]
-- Solo incluye UN bloque [CHART:...] por respuesta`;
+- El bloque completo SIEMPRE termina con }] — el objeto JSON seguido de corchete de cierre
+- El array "datos" SIEMPRE tiene esta estructura: [{"label":"Nombre","valor":123}]
+- Solo incluye UN bloque [CHART:...] por respuesta
+- NUNCA uses 
+ ni saltos de línea dentro del JSON`;
 
 async function callLLM(messages) {
   const key = getApiKey();
@@ -2872,7 +2874,7 @@ function renderMessageContent(text, msgId) {
   const charts = [];
   const chartUniqueId = msgId;
 
-  const cleaned = text.replace(/\[CHART:([\s\S]*?)\]/g, (match, jsonStr) => {
+  const cleaned = text.replace(/\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g, (match, jsonStr) => {
     const idx = charts.length;
     try {
       const config = JSON.parse(jsonStr.trim());
@@ -3014,7 +3016,7 @@ function renderInlineCharts(container) {
   // Method 2: Fallback — scan raw textContent for any [CHART:...] that slipped through
   const rawText = bubble.textContent || '';
   if (rawText.includes('[CHART:')) {
-    const chartRegex = /\[CHART:(\{[\s\S]*?\})\]/g;
+    const chartRegex = /\[CHART:(\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})\]/g;
     let m;
     while ((m = chartRegex.exec(rawText)) !== null) {
       try {
