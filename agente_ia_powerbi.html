@@ -2461,11 +2461,21 @@ INSTRUCCIONES:
 - Para números grandes usa formato legible (1.234.567)
 - Cuando no tengas suficiente información en la muestra, indícalo claramente
 
-GRÁFICAS — Solo incluye [CHART:...] cuando el usuario pida visualización explícita:
-[CHART:{"tipo":"barras","titulo":"Título","datos":[{"label":"A","valor":100},{"label":"B","valor":80}]}]
-[CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie 1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
-[CHART:{"tipo":"dona","titulo":"Distribución","datos":[{"label":"A","valor":60},{"label":"B","valor":40}]}]
-[CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500000,"cambio":12.5},{"label":"Promedio","valor":750}]}]`;
+GRÁFICAS — INSTRUCCIONES CRÍTICAS:
+Cuando el usuario pida una gráfica, DEBES incluir el bloque [CHART:...] al FINAL de tu respuesta.
+El formato debe ser EXACTAMENTE así, sin espacios extra ni saltos de línea dentro del JSON:
+
+Para barras: [CHART:{"tipo":"barras","titulo":"Mi Titulo","datos":[{"label":"A","valor":100},{"label":"B","valor":80}]}]
+Para líneas: [CHART:{"tipo":"lineas","titulo":"Tendencia","series":[{"nombre":"Serie1","datos":[{"x":"Ene","y":100},{"x":"Feb","y":120}]}]}]
+Para dona/torta: [CHART:{"tipo":"dona","titulo":"Distribución","datos":[{"label":"Cat A","valor":60},{"label":"Cat B","valor":40}]}]
+Para KPIs: [CHART:{"tipo":"kpi","datos":[{"label":"Total","valor":1500000,"cambio":12.5},{"label":"Promedio","valor":750}]}]
+
+REGLAS ESTRICTAS para el JSON de gráficas:
+- USA SIEMPRE comillas dobles (") nunca simples (')
+- El JSON debe estar en UNA SOLA LÍNEA, sin saltos de línea dentro
+- Los números deben ser numéricos, no strings: "valor":100 (no "valor":"100")
+- El bloque completo va entre corchetes: [CHART:{...}]
+- Solo incluye UN bloque [CHART:...] por respuesta`;
 
 async function callLLM(messages) {
   const key = getApiKey();
@@ -2659,7 +2669,8 @@ function addUserMessage(text) {
 function addAgentMessage(text, fromCache = false) {
   const wrap = document.createElement('div');
   wrap.className = 'msg-wrap agent';
-  const rendered = renderMessageContent(text);
+  const msgId = 'agent_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+  const rendered = renderMessageContent(text, msgId);
   wrap.innerHTML = `
     <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
     <div class="msg-content">
@@ -2671,8 +2682,8 @@ function addAgentMessage(text, fromCache = false) {
     </div>
   `;
   appendMessage(wrap);
-  // Render any charts
-  setTimeout(() => renderInlineCharts(wrap), 50);
+  // Render charts after DOM is ready
+  setTimeout(() => renderInlineCharts(wrap), 80);
 }
 
 let streamingMsgCounter = 0;
@@ -2705,16 +2716,22 @@ function finalizeStreamingMessage(id, text) {
   const bubble = document.getElementById(id + '-bubble');
   const wrap = document.getElementById(id);
   if (bubble) {
-    bubble.innerHTML = renderMessageContent(text);
-    setTimeout(() => renderInlineCharts(wrap), 50);
+    // Use id as msgId so CHART_STORE can find it
+    const msgId = 'stream_' + id;
+    bubble.innerHTML = renderMessageContent(text, msgId);
+    // Give DOM time to update before rendering charts
+    setTimeout(() => renderInlineCharts(wrap), 100);
   }
   if (wrap) {
-    const content = wrap.querySelector('.msg-content');
-    if (content) {
+    const msgContent = wrap.querySelector('.msg-content');
+    if (msgContent) {
+      // Remove old actions if any
+      const oldActions = msgContent.querySelector('.msg-actions');
+      if (oldActions) oldActions.remove();
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
       actions.innerHTML = `<button class="btn-icon" onclick="copyMessage(this)" title="Copiar">📋</button>`;
-      content.appendChild(actions);
+      msgContent.appendChild(actions);
     }
   }
 }
@@ -2722,14 +2739,16 @@ function finalizeStreamingMessage(id, text) {
 function addSystemMessage(text) {
   const wrap = document.createElement('div');
   wrap.className = 'msg-wrap agent';
+  const msgId = 'sys_' + Date.now();
   wrap.innerHTML = `
     <div class="msg-avatar" style="flex-shrink:0">${buildAvatarSVG(32, 'idle')}</div>
     <div class="msg-content">
-      <div class="msg-bubble">${renderMessageContent(text)}</div>
+      <div class="msg-bubble">${renderMessageContent(text, msgId)}</div>
       <div class="msg-time">${getTime()} · sistema</div>
     </div>
   `;
   appendMessage(wrap);
+  setTimeout(() => renderInlineCharts(wrap), 80);
 }
 
 function showTypingIndicator() {
@@ -2841,28 +2860,60 @@ function toggleSidebar() {
 // ═══════════════════════════════════════════════════
 // MARKDOWN RENDERER
 // ═══════════════════════════════════════════════════
-function renderMessageContent(text) {
-  // Extract and placeholder charts
-  const chartPlaceholders = [];
-  let processed = text.replace(/\[CHART:([\s\S]*?)\]/g, (match, json) => {
-    const idx = chartPlaceholders.length;
-    chartPlaceholders.push(json);
-    return `<div class="chart-placeholder" data-chart-idx="${idx}"></div>`;
+// Module-level chart store: msgId -> [chartConfig, ...]
+const CHART_STORE = new Map();
+let _chartMsgCounter = 0;
+
+function renderMessageContent(text, msgId) {
+  // Generate a unique message ID if not provided
+  if (!msgId) msgId = 'msg_' + (++_chartMsgCounter) + '_' + Date.now();
+
+  // Extract [CHART:...] blocks BEFORE any HTML escaping
+  const charts = [];
+  const chartUniqueId = msgId;
+
+  const cleaned = text.replace(/\[CHART:([\s\S]*?)\]/g, (match, jsonStr) => {
+    const idx = charts.length;
+    try {
+      const config = JSON.parse(jsonStr.trim());
+      charts.push(config);
+    } catch(e) {
+      // Try to recover malformed JSON
+      try {
+        const fixed = jsonStr.trim()
+          .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // unquoted keys
+          .replace(/'/g, '"');                          // single to double quotes
+        charts.push(JSON.parse(fixed));
+      } catch(e2) {
+        charts.push({ _raw: jsonStr, _error: e.message });
+      }
+    }
+    // Leave a clean placeholder that survives HTML escaping
+    return `__CHART_${chartUniqueId}_${idx}__`;
   });
 
-  // Markdown to HTML
-  processed = markdownToHTML(processed);
+  // Store charts for later rendering
+  if (charts.length > 0) {
+    CHART_STORE.set(chartUniqueId, charts);
+  }
 
-  return processed;
+  // Now convert remaining text to HTML
+  let html = markdownToHTML(cleaned);
+
+  // Replace placeholders with render-trigger divs (after HTML processing)
+  html = html.replace(/__CHART_([^_]+(?:_[^_]+)*)_(\d+)__/g, (match, cid, idx) => {
+    return `<div class="chart-render-target" data-chart-id="${cid}" data-chart-idx="${idx}"></div>`;
+  });
+
+  return html;
 }
 
 function markdownToHTML(text) {
   let html = escHtml(text);
 
-  // Unescape chart placeholders
-  html = html.replace(/&lt;div class=&quot;chart-placeholder&quot;[^>]+&gt;&lt;\/div&gt;/g, m =>
-    m.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')
-  );
+  // Restore __CHART_xxx__ placeholders that were HTML-escaped
+  // These are safe alphanumeric tokens that survive escaping
+  html = html.replace(/(__CHART_[A-Za-z0-9_]+__)/g, '$1');
 
   // Code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) =>
@@ -2938,71 +2989,113 @@ function renderMarkdownTables(html) {
 // MOTOR DE GRÁFICAS — Canvas API puro
 // ═══════════════════════════════════════════════════
 function renderInlineCharts(container) {
-  const placeholders = container.querySelectorAll('.chart-placeholder');
   const bubble = container.querySelector('.msg-bubble');
   if (!bubble) return;
 
-  // Also scan for [CHART:...] in text
-  const chartMatches = [...(bubble.innerHTML.matchAll(/\[CHART:([\s\S]*?)\]/g) || [])];
-
-  placeholders.forEach((ph) => {
-    try {
-      const idxAttr = ph.getAttribute('data-chart-idx');
-      // This will be handled by the main text parsing
-    } catch {}
+  // Method 1: Render from CHART_STORE using data-chart-id targets
+  const targets = bubble.querySelectorAll('.chart-render-target');
+  targets.forEach(target => {
+    const chartId = target.getAttribute('data-chart-id');
+    const chartIdx = parseInt(target.getAttribute('data-chart-idx') || '0');
+    const charts = CHART_STORE.get(chartId);
+    if (charts && charts[chartIdx]) {
+      const config = charts[chartIdx];
+      if (config._error) {
+        target.innerHTML = `<div style="color:var(--color-error);font-size:12px;padding:8px">⚠️ JSON de gráfica inválido: ${config._error}</div>`;
+        return;
+      }
+      const chartDiv = buildChartElement(config);
+      if (chartDiv) {
+        target.replaceWith(chartDiv);
+      }
+    }
   });
 
-  // Re-scan the finalized text for chart tags
-  const rawText = container.querySelector('.msg-bubble')?.textContent || '';
-  const chartRegex = /\[CHART:(\{[\s\S]*?\})\]/g;
-  let m;
-  while ((m = chartRegex.exec(rawText)) !== null) {
-    try {
-      const config = JSON.parse(m[1]);
-      injectChart(container, config);
-    } catch {}
+  // Method 2: Fallback — scan raw textContent for any [CHART:...] that slipped through
+  const rawText = bubble.textContent || '';
+  if (rawText.includes('[CHART:')) {
+    const chartRegex = /\[CHART:(\{[\s\S]*?\})\]/g;
+    let m;
+    while ((m = chartRegex.exec(rawText)) !== null) {
+      try {
+        const config = JSON.parse(m[1]);
+        const chartDiv = buildChartElement(config);
+        if (chartDiv) {
+          // Remove the [CHART:...] text from bubble and append chart
+          bubble.innerHTML = bubble.innerHTML.replace(
+            /\[CHART:[\s\S]*?\]/,
+            ''
+          );
+          bubble.parentNode.insertBefore(chartDiv, bubble.nextSibling);
+        }
+      } catch(e) {
+        console.warn('Chart parse error:', e.message);
+      }
+    }
   }
 }
 
-function injectChart(container, config) {
+// Separate chart builder — returns a DOM element or null
+function buildChartElement(config) {
   const chartDiv = document.createElement('div');
   chartDiv.className = 'chart-container';
 
   const titleEl = document.createElement('div');
   titleEl.className = 'chart-title';
-  titleEl.textContent = config.titulo || 'Gráfica';
+  titleEl.textContent = config.titulo || config.title || 'Gráfica';
   chartDiv.appendChild(titleEl);
 
   const actions = document.createElement('div');
   actions.className = 'chart-actions';
+  const safeTitle = (config.titulo || config.title || 'Grafica').replace(/['"]/g, '');
   actions.innerHTML = `
-    <button class="btn-icon" title="Expandir" onclick="expandChart(this.closest('.chart-container'), '${escHtml(config.titulo || 'Gráfica')}')">⛶</button>
+    <button class="btn-icon" title="Expandir" onclick="expandChart(this.closest('.chart-container'), '${safeTitle}')">⛶</button>
     <button class="btn-icon" title="Descargar PNG" onclick="downloadChart(this.closest('.chart-container'))">💾</button>
   `;
   chartDiv.appendChild(actions);
 
+  // Normalize tipo
+  const tipo = (config.tipo || config.type || 'barras').toLowerCase();
   let rendered = false;
 
-  switch (config.tipo) {
-    case 'barras':   renderBarChart(chartDiv, config); rendered = true; break;
-    case 'lineas':   renderLineChart(chartDiv, config); rendered = true; break;
-    case 'dona':
-    case 'torta':    renderDonutChart(chartDiv, config); rendered = true; break;
-    case 'kpi':      renderKPICards(chartDiv, config); rendered = true; break;
-    default:
-      // Try to guess
-      if (config.datos && Array.isArray(config.datos)) {
-        if (config.datos[0]?.valor !== undefined) renderBarChart(chartDiv, config);
-        else renderBarChart(chartDiv, config);
-        rendered = true;
-      }
+  try {
+    switch (tipo) {
+      case 'barras':
+      case 'bar':
+      case 'barra':        renderBarChart(chartDiv, config);   rendered = true; break;
+      case 'lineas':
+      case 'line':
+      case 'linea':
+      case 'area':         renderLineChart(chartDiv, config);  rendered = true; break;
+      case 'dona':
+      case 'donut':
+      case 'torta':
+      case 'pie':          renderDonutChart(chartDiv, config); rendered = true; break;
+      case 'kpi':
+      case 'kpis':
+      case 'metric':       renderKPICards(chartDiv, config);   rendered = true; break;
+      default:
+        // Auto-detect: if has datos with valor → barras
+        if (config.datos && Array.isArray(config.datos) && config.datos[0]?.valor !== undefined) {
+          renderBarChart(chartDiv, config); rendered = true;
+        } else if (config.series) {
+          renderLineChart(chartDiv, config); rendered = true;
+        }
+    }
+  } catch(e) {
+    chartDiv.innerHTML += `<div style="color:var(--color-error);padding:12px;font-size:12px">Error al renderizar gráfica: ${e.message}</div>`;
+    rendered = true;
   }
 
-  if (rendered) {
+  return rendered ? chartDiv : null;
+}
+
+// injectChart kept for backward compatibility
+function injectChart(container, config) {
+  const chartDiv = buildChartElement(config);
+  if (chartDiv) {
     const bubble = container.querySelector('.msg-bubble');
     if (bubble) {
-      // Remove [CHART:...] text from bubble
-      bubble.innerHTML = bubble.innerHTML.replace(/\[CHART:[\s\S]*?\]/g, '');
       bubble.parentNode.insertBefore(chartDiv, bubble.nextSibling);
     }
   }
